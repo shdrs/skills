@@ -3,7 +3,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node scripts/build.mjs",
-    "update": "claude plugin update cytospec && claude plugin update mega-skill"
+    "build": "node scripts/build.mjs"
   }
 }
