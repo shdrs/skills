@@ -1,6 +1,6 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "broken💎shaders",
+  "name": "shdrs",
   "metadata": {
     "description": "/watch-video or /cytospec to turn .md spec files into decision-graphs"
   },
