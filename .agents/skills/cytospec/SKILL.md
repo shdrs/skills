@@ -20,7 +20,7 @@ docs$cytospec/                              ← root (configurable)
     2026-05-20-auth-api-design/             ← one session
       metadata.json
       chunks/
-      tournament/
+      rounds/
       edges/
       graph.json                            ← session's standalone graph
 ```
@@ -95,11 +95,13 @@ DecisionGraph {
 
 You are a **delegator** when running the pipeline. You orchestrate sub-agents but never read their data directly. Your context holds only file paths, counts, and status summaries.
 
-- **Sub-agents read each other's files.** Data flows sub-agent → file → sub-agent. Never through you.
-- **Tell sub-agents WHERE to read and write.** Every prompt includes explicit paths.
-- **Track progress by counts.** "Wave 2 produced 45 roots across 3 batches" — never the decisions themselves.
+- **Never read input .md files yourself.** Not even "to get a sense of them." You only need line counts and timestamps — get those from Bash commands (`wc -l` for line counts, `stat` for modification timestamps). The file content belongs in sub-agent context, not yours.
+- **Never read chunk, round, edge, or graph JSON files.** Sub-agents read each other's files. Data flows sub-agent → file → sub-agent. Never through you.
+- **Tell sub-agents WHERE to read and write.** Every sub-agent prompt includes explicit file paths for input and output.
+- **Track progress by counts only.** "Wave 2 produced 45 roots across 3 batches" — never the decisions themselves.
+- **Use real file timestamps.** Run `stat -f '%Sm' -t '%Y-%m-%dT%H:%M:%SZ' <file>` (macOS) or `stat -c '%y' <file>` (Linux) to get actual modification times. Never infer timestamps from filenames.
 - **Cheapest model for extraction** (Stage 1 is mechanical). **Strongest model for everything else** (judgment calls).
-- **Chunks use line ranges.** Tell extraction agents: "Read file X, lines 0-1000." They use Read with offset/limit.
+- **Chunks use line ranges.** Tell extraction agents: "Read file X, lines 0-1000." They use the Read tool with offset/limit. You do NOT copy file content into sub-agent prompts.
 
 ## What cytospec does NOT do
 

@@ -6,7 +6,7 @@ Analyze markdown files and produce a decision graph. This is the core workflow �
 
 1. You identify the input .md files
 2. You create a session scope folder
-3. You orchestrate the pipeline: extract → consolidate → discover edges → polish
+3. You orchestrate the pipeline: extract → consolidate (map-reduce) → discover edges → polish
 4. The session's `graph.json` is written
 5. You offer to merge into the master graph
 
@@ -17,23 +17,26 @@ Identify the files to process. The user may provide:
 - Specific file paths → use those
 - Nothing → ask which files or directories to process
 
+**Do NOT read any input .md files yourself.** Use Bash commands only:
+- `wc -l <file>` for line counts
+- `stat -f '%Sm' -t '%Y-%m-%dT%H:%M:%SZ' <file>` (macOS) or `stat -c '%y' <file>` (Linux) for real modification timestamps
+- Never infer timestamps from filenames
+
 Create the session scope:
 ```
 docs/cytospec/scopes/{YYYY-MM-DD}-{slug}/
   metadata.json
   chunks/
-  tournament/
+  rounds/
   edges/
 ```
 
-The slug is derived from the input file names. If processing `auth-design.md` and `api-spec.md`, the slug might be `auth-api-design`. Keep it short and descriptive.
-
-Write `metadata.json` with the files being processed and their modification timestamps:
+Write `metadata.json` with the files being processed and their actual modification timestamps:
 ```json
 {
   "files": {
-    "specs/api-design.md": { "modified_at": "2026-05-20T09:00:00Z", "lines": 2400 },
-    "specs/auth-spec.md": { "modified_at": "2026-05-19T14:00:00Z", "lines": 800 }
+    "specs/api-design.md": { "modified_at": "2026-05-20T09:15:32Z", "lines": 2400 },
+    "specs/auth-spec.md": { "modified_at": "2026-05-19T14:22:07Z", "lines": 800 }
   },
   "created_at": "2026-05-20T15:00:00Z"
 }
@@ -46,7 +49,7 @@ Split each file into ~1000 line chunks with ~100 line overlap. Launch one sub-ag
 ### Extraction sub-agent prompt
 
 ```
-Extract every decision from this chunk of a spec file.
+Extract meaningful decisions from this chunk of a spec file.
 
 Read the file: {file_path} (lines {start} to {end})
 
@@ -56,6 +59,17 @@ A "decision" is any concrete choice the authors committed to:
 - Implicit assumptions: "The frontend will be built in React"
 - Constraints accepted: "We can't use X because Y, so we'll do Z"
 - Rejections: "We considered X but rejected it because Y"
+- Architecture, design, or implementation choices at any level
+
+Be EXHAUSTIVE. Design specs are dense with decisions — most lines represent
+choices. Extract every decision you find. Duplicates with other chunks will
+be handled later — your job is to never miss one.
+
+However, group repeated instances of the same pattern into one decision.
+For example, if a spec lists 15 individual signal configurations that all
+follow the same pattern, that's ONE decision ("Use weighted scoring across
+N signal types") with representative quotes, not 15 separate decisions.
+The pattern is the decision; the instances are evidence.
 
 For each decision, output a JSON object:
 {
@@ -65,9 +79,6 @@ For each decision, output a JSON object:
   "source_file": "{file_path}",
   "source_lines": [approximate_start, approximate_end]
 }
-
-Be EXHAUSTIVE. Extract every decision, no matter how small. Duplicates
-with other chunks will be handled later — never miss one.
 
 Write your output as a JSON object to: {chunk_output_path}
 The format:
@@ -82,23 +93,34 @@ The format:
 Report back ONLY: how many candidates you found and the source file + line range.
 ```
 
-### What counts as a decision
+## Step 3: Consolidation (map-reduce loop)
 
-Strong signals (almost always): "We chose / selected / decided / will use / opted for...", comparisons with conclusions, explicit rejections.
+This is the core of cytospec. It takes the raw candidates from extraction and consolidates them into a deduplicated decision tree through iterative map-reduce rounds.
 
-Medium signals (likely): Technology names stated as given, architecture patterns named, constraints stated.
+### The loop
 
-Weak signals (extract anyway): Implicit choices with no rationale, stack choices buried in lists, "we assume" statements.
+```
+Round 1:
+  MAP:     merge pairs of extraction chunks (parallel)
+  SHUFFLE: flatten all outputs, redistribute into new bounded chunks
 
-What is NOT a decision: descriptions of how something works (without choosing it), background context, unanswered questions, TODOs.
+Round 2:
+  MAP:     merge pairs of shuffled chunks (parallel)
+  SHUFFLE: flatten, redistribute
 
-## Step 3: Tournament consolidation (parallel waves, strong model)
+Round N:
+  MAP:     merge pairs
+  SHUFFLE: flatten, redistribute
+  → delegator judges: negligible merges? → done
+```
 
-All candidates need comparing to deduplicate and discover hierarchy. This uses a tournament bracket with venn diagram analysis.
+### MAP phase: Pairwise merge (parallel, strong model)
 
-### Venn diagram analysis
+Each merge agent takes exactly TWO chunk files as input. It compares all root-level decisions between them using venn diagram analysis and produces a consolidated output.
 
-For each pair of candidates, evaluate:
+#### Venn diagram analysis
+
+For each pair of root decisions (one from each input), evaluate:
 
 ```
 VennAnalysis {
@@ -118,63 +140,95 @@ VennAnalysis {
 
 **PARENT_CHILD** (50-90%, one contains the other): Broader decision becomes parent. Both survive as separate nodes.
 
-**SIBLING** (20-50%): Different decisions in same domain. Flag as related.
+**SIBLING** (20-50%): Different decisions in same domain. Flag as related — they may share a parent.
 
-**UNRELATED** (<20%): No connection.
+**UNRELATED** (<20%): No connection. Both pass through unchanged.
 
-### Wave mechanics
-
-**Wave 1:** Group candidates by source file (same-file candidates most likely overlap). Batches of ~25. One sub-agent per batch.
-
-**Wave 2+:** Mix across sources to catch cross-file duplicates. Group outputs into batches of ~25 root decisions (subtrees ride along as payload).
-
-**Stop condition:** ≤25 root decisions remain → one final reconciliation agent.
-
-### Tournament sub-agent prompt
+#### Merge sub-agent prompt
 
 ```
-Consolidate decision candidates using venn diagram analysis.
+Consolidate decisions from two chunk files using venn diagram analysis.
 
-Read the following files:
-{list of input file paths}
+Read these two files:
+- {chunk_a_path}
+- {chunk_b_path}
 
-These contain decision candidates. Your job:
-1. Load all candidates from these files
-2. For every plausible pair, run VennAnalysis
-3. Apply MERGE, PARENT_CHILD, SIBLING, or UNRELATED verdicts
-4. Output a consolidated mini-tree of deduplicated decisions
+For every plausible pair of root-level decisions (one from each file),
+run VennAnalysis and apply the verdict. Be aggressive about merging —
+decisions about the same system/component using different words should MERGE.
 
-Only compare ROOT-level decisions against each other. If a previous wave
-already established children, carry them as payload — don't re-compare them.
+For PARENT_CHILD verdicts: the broader decision becomes parent, the narrower
+becomes its child.
 
-Write output to: {batch_output_path}
+Write output to: {output_path}
 Format:
 {
-  "wave": {N},
-  "batch": {M},
-  "decisions": [
-    {
-      "raw_label": "...",
-      "quotes": ["all merged quotes"],
-      "sources": ["all source files"],
-      "context_hint": "...",
-      "parent": null,
-      "depth": 0,
-      "children_labels": ["child1 label", "child2 label"]
-    }
-  ],
+  "round": {N},
+  "input_files": ["{chunk_a_path}", "{chunk_b_path}"],
+  "decisions": [ ...consolidated decisions... ],
   "root_count": {N},
-  "total_count": {N}
+  "total_count": {N},
+  "merges_performed": {N},
+  "hierarchies_created": {N}
 }
 
-Report back ONLY: root_count and total_count.
+Report back ONLY: root_count, total_count, merges_performed.
 ```
 
-The delegator checks `root_count` across all batches. If sum > 25, run another wave. If ≤ 25, run final reconciliation.
+### SHUFFLE phase: Redistribute into bounded chunks
+
+After all merge agents complete a round, the outputs need to be flattened and redistributed into new bounded-size chunks for the next round.
+
+**Chunk size limit: ~1500 LOC.** This is measured in data volume (lines of JSON), not item count. A root with 50 quotes takes more space than a root with 2 quotes — LOC captures this naturally.
+
+The shuffle is done by sub-agents (cheapest model — it's mechanical work):
+
+```
+Read the following merge outputs from round {N}:
+{list of merge output paths}
+
+Collect all root-level decisions (with their subtrees).
+Redistribute them into new chunk files, each no larger than ~1500 lines of JSON.
+
+Strategy for distribution:
+- Mix decisions from different source files into the same chunk
+  (this ensures cross-file decisions meet each other in the next round)
+- Keep each root decision together with its children (don't split subtrees)
+
+Write new chunks to: {round_N+1_chunks_dir}/chunk-{M}.json
+Same format as merge output.
+
+Report back ONLY: number of chunks written, total root count.
+```
+
+If the total data is too large for one shuffle agent, split the shuffle itself across multiple agents — each handles a subset of merge outputs and writes its own chunk files.
+
+### Delegator's role in the loop
+
+You track the following after each round:
+
+```
+Round 1: 777 roots → 450 roots (42% reduction, 180 merges)
+Round 2: 450 roots → 310 roots (31% reduction, 85 merges)
+Round 3: 310 roots → 285 roots (8% reduction, 15 merges)
+```
+
+**You decide when to stop.** Look at the trend:
+- Is the reduction rate flattening? (42% → 31% → 8% → clearly slowing)
+- Are the remaining merges negligible? (15 merges across 285 decisions = most are distinct)
+- Would another round be worth the compute?
+
+There's no formula. Use your judgment. If the curve is clearly flattening and another round would save a handful of merges at best, stop and move to edge discovery.
+
+**You can also direct the shuffle strategically.** You know which source files each chunk covers (from the summaries). If you notice that "scoring-algorithm" and "signal-tuner" chunks haven't been cross-compared yet, tell the shuffle agent to pair decisions from those sources together in the next round.
+
+### Odd-numbered chunks
+
+If a round produces an odd number of chunks after shuffle, the leftover chunk passes through to the next round unmerged. It gets new merge partners after the next shuffle.
 
 ## Step 4: Edge discovery (parallel, strong model)
 
-With the hierarchy established in `tournament/final.json`, discover cross-cutting edges between decisions in different branches.
+After consolidation, the remaining decisions are your decision tree. Now discover cross-cutting edges between decisions in different branches.
 
 ### What edges mean
 
@@ -187,14 +241,14 @@ With the hierarchy established in `tournament/final.json`, discover cross-cuttin
 
 Edges can cross ANY depth level. A strategic decision can constrain an implementation detail in another branch.
 
-### Edge discovery sub-agent prompt
+### Edge discovery approach
 
-Split the tree into branch pairs (one pair per sub-agent):
+Split the decision tree into branch pairs (each top-level decision + its subtree is a "branch"). One sub-agent per pair of branches:
 
 ```
 Discover cross-cutting edges between two branches of a decision tree.
 
-Read: {path_to_tournament_final}
+Read: {path_to_consolidated_decisions}
 
 Focus on these two branches:
 - Branch A: "{root_label_A}" and all its sub-decisions
@@ -233,7 +287,7 @@ Also run within-branch edge discovery (siblings that affect each other).
 
 ## Step 5: Polish and write session graph
 
-One sub-agent reads `tournament/final.json` and all edge files. It:
+One sub-agent reads the final consolidated decisions and all edge files. It:
 
 1. Converts raw_labels into proper `Insight` objects (the label itself needs quote-backing)
 2. Fills `trace` fields: extracts `why`, `over`, `impact` from the accumulated quotes
@@ -243,6 +297,8 @@ One sub-agent reads `tournament/final.json` and all edge files. It:
 6. Writes `scopes/{session}/graph.json`
 
 The Insight generation rule: **quotes first, then synthesis.** The sub-agent finds relevant quotes for each field, then generates the synthesis grounded in those quotes. No quotes → empty array, not a hallucinated synthesis.
+
+If the consolidated tree is too large for one polish agent, split by branch — one agent per top-level decision and its subtree.
 
 ## Step 6: Offer to merge
 
