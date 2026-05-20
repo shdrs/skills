@@ -7,6 +7,7 @@ license: MIT
 allowed-tools:
   - Bash(node .claude/skills/cytospec/applets/viewer.mjs *)
   - Bash(node .claude/skills/cytospec/applets/shuffle.mjs *)
+  - Bash(node .claude/skills/cytospec/applets/assemble.mjs *)
 ---
 
 Extracts decisions from markdown files and maps how they relate — producing a graph that compresses large spec corpora into browsable, interconnected insights.

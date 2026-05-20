@@ -7,6 +7,7 @@ license: MIT
 allowed-tools:
   - Bash(node {{applets_path}}/viewer.mjs *)
   - Bash(node {{applets_path}}/shuffle.mjs *)
+  - Bash(node {{applets_path}}/assemble.mjs *)
 ---
 
 Extracts decisions from markdown files and maps how they relate — producing a graph that compresses large spec corpora into browsable, interconnected insights.

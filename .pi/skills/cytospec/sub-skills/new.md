@@ -6,7 +6,7 @@ Analyze markdown files and produce a decision graph. This is the core workflow �
 
 1. You identify the input .md files
 2. You create a session scope folder
-3. You orchestrate the pipeline: extract → consolidate (map-reduce) → discover edges → polish
+3. You orchestrate the pipeline: extract → consolidate (map-reduce) → polish → discover edges → assemble
 4. The session's `graph.json` is written
 5. You offer to merge into the master graph
 
@@ -258,8 +258,11 @@ Round 3: 310 roots → 285 roots (8% reduction, 15 merges) — 7 chunks, largest
 - Is the reduction rate flattening? (42% → 31% → 8% → clearly slowing)
 - Are the remaining merges negligible? (15 merges across 285 decisions = most are distinct)
 - Would another round be worth the compute?
+- Are the merge outputs small enough for polish? Check with `wc -c` — each file should be ≤ ~40k characters. If files are larger, either continue consolidating or use the shuffle applet to split them before polishing (see Step 4).
 
-There's no formula. Use your judgment. If the curve is clearly flattening and another round would save a handful of merges at best, stop and move to edge discovery.
+**Cross-file coverage matters.** The consolidation loop produces N merge outputs per round. Decisions in different outputs were only compared if they were once in the same shuffle chunk. Before stopping, check: has the pairing sub-agent had a chance to cross-compare all source files? If not, do one more shuffle+merge round with explicit cross-file pairings. A flattening merge rate within the current pairings doesn't mean all cross-file duplicates are found — it may just mean those particular pairings are exhausted.
+
+There's no formula. Use your judgment. If the curve is clearly flattening AND cross-file coverage is thorough, stop and move to polish.
 
 **You can also direct the pairing strategically.** You know which source files each chunk covers (from the shuffle report). If you notice that "scoring-algorithm" and "signal-tuner" chunks haven't been cross-compared yet, add that as guidance to the pairing sub-agent's prompt for the next round.
 
@@ -267,9 +270,59 @@ There's no formula. Use your judgment. If the curve is clearly flattening and an
 
 If a round produces an odd number of chunks after shuffle, the leftover chunk passes through to the next round unmerged. It gets new merge partners after the next shuffle.
 
-## Step 4: Edge discovery (parallel, strong model)
+## Step 4: Polish (parallel, strong model)
 
-After consolidation, the remaining decisions are your decision tree. Now discover cross-cutting edges between decisions in different branches.
+After consolidation, you have multiple merge output files. Each file is already internally consolidated — its decisions have been through multiple rounds of pairwise comparison. Polish converts the raw intermediate format into the final schema. It's a per-decision transformation, not a consolidation step.
+
+Cross-file deduplication happens later in assembly (Step 6).
+
+### Sizing
+
+Before dispatching, check every merge output with `wc -c`. Polish agents expand their input — adding trace fields, explain strings, and tags typically doubles the character count. **A single polish agent should receive no more than ~40k characters of input.** For larger files, split decisions into groups (by top-level branch and its descendants) and dispatch one agent per group. Write the groups to temporary files so the polish agent has a clean input path.
+
+### Polish sub-agent prompt
+
+```
+Read the consolidated decisions at: {merge_output_path}
+
+For each decision, convert to the final schema:
+
+1. Convert raw_label into a proper label Insight:
+   { "quotes": [use existing quotes array], "synthesis": "the raw_label text" }
+
+2. Fill trace fields from the accumulated quotes:
+   - why:    reasons this decision was made (Insight objects). Empty array if no evidence.
+   - over:   alternatives considered (Insight objects). Empty array if none stated.
+   - impact: tradeoffs and downstream effects (Insight objects). Empty array if none found.
+
+3. Generate an explain string — extends the label, doesn't repeat it. One sentence.
+
+4. Assign tags — look for natural clusters across ALL decisions in this file,
+   not ad-hoc per-decision. Common categories: architecture, data-model,
+   api-design, security, performance, ui, infrastructure, etc.
+
+5. Set depth: 0 for strategic (broad architectural), 1 for tactical
+   (component-level), 2 for implementation details.
+
+6. Keep parent, sources, source_file, source_lines, context_hint as-is.
+
+Insight generation rule: quotes first, then synthesis. Find relevant quotes,
+then write the synthesis grounded in those quotes. No quotes → empty array,
+not a hallucinated synthesis.
+
+Write to: {polish_output_path}
+Format: { "decisions": [...], "decision_count": N }
+
+Report back ONLY: decision_count and the output file path.
+```
+
+Dispatch one agent per merge output (or per branch group for oversized files), in parallel. All polish agents write to `polished/part-{N}.json`.
+
+## Step 5: Edge discovery (parallel, strong model)
+
+**This is a separate phase from polish.** Never combine edge discovery and polish into one sub-agent — the combined workload will fail for large files.
+
+After polish, discover cross-cutting edges between decisions in different branches.
 
 ### What edges mean
 
@@ -289,7 +342,7 @@ Split the decision tree into branch pairs (each top-level decision + its subtree
 ```
 Discover cross-cutting edges between two branches of a decision tree.
 
-Read: {path_to_consolidated_decisions}
+Read: {path_to_polished_decisions}
 
 Focus on these two branches:
 - Branch A: "{root_label_A}" and all its sub-decisions
@@ -326,22 +379,29 @@ Report back ONLY: edge_count.
 
 Also run within-branch edge discovery (siblings that affect each other).
 
-## Step 5: Polish and write session graph
+## Step 6: Assemble session graph
 
-One sub-agent reads the final consolidated decisions and all edge files. It:
+Assembly is mechanical — the consolidation loop already handled all deduplication and the polish agents converted everything to the final schema. The assembly applet combines all polished decision files and edge files into one `graph.json`:
 
-1. Converts raw_labels into proper `Insight` objects (the label itself needs quote-backing)
-2. Fills `trace` fields: extracts `why`, `over`, `impact` from the accumulated quotes
-3. Generates `explain` strings (extends label, doesn't repeat it)
-4. Assigns consolidated tags (not ad-hoc per-decision — look for natural clusters)
-5. Assembles all edges
-6. Writes `scopes/{session}/graph.json`
+```bash
+node {{applets_path}}/assemble.mjs {session_scope}/graph.json {session_scope}/polished {session_scope}/edges
+```
 
-The Insight generation rule: **quotes first, then synthesis.** The sub-agent finds relevant quotes for each field, then generates the synthesis grounded in those quotes. No quotes → empty array, not a hallucinated synthesis.
+The applet reads all `.json` files from both directories, concatenates decisions, deduplicates edges (same type + from + to), and writes the graph. It reports stats to stdout:
 
-If the consolidated tree is too large for one polish agent, split by branch — one agent per top-level decision and its subtree.
+```json
+{
+  "decisions": 285,
+  "edges": 42,
+  "duplicate_edges_removed": 3,
+  "polished_files": 4,
+  "edge_files": 6,
+  "output": "scopes/.../graph.json",
+  "output_chars": 182000
+}
+```
 
-## Step 6: Offer to merge
+## Step 7: Offer to merge
 
 After the session graph is written, tell the user:
 
