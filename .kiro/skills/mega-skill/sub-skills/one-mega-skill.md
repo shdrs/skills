@@ -181,6 +181,24 @@ Present findings grouped by category...
 
 Sub-skill files go through the same template resolution as SKILL.md (template variables, provider blocks) if multi-agent publishing is enabled.
 
+## User-facing language: no jargon
+
+"Sub-skill" and "applet" are architecture terms — users don't know or care about them. **Add this to your master SKILL.md** so the agent presents everything as files in a `{skill-name}/` folder:
+
+```markdown
+## Talking to the user about this skill
+
+Never say "sub-skill" or "applet." Present all files as `{skill-name}/filename`, stripping internal directories like `sub-skills/` and `applets/`:
+
+| ❌ Don't say | ✅ Say instead |
+|---|---|
+| "Loading the `build` sub-skill" | "Loading `my-skill/build.md`" |
+| "Running the lint applet" | "Running `my-skill/lint.mjs`" or "Running the linter" |
+| "Opening `my-skill/applets/dashboard/index.html`" | "Opening `my-skill/dashboard/index.html`" |
+
+For scripts, describe what they DO or use the `{skill-name}/filename` path — never call them "applets."
+```
+
 ## Command metadata
 
 `applets/command-metadata.json` registers every sub-command:
@@ -246,4 +264,5 @@ Sub-skills inherit this context because the agent always loads the master SKILL.
 - [ ] `command-metadata.json` lists every sub-command
 - [ ] Shared setup/principles live in the master, not duplicated in sub-skills
 - [ ] Implementation pipelines are embedded within user-facing sub-skills, not exposed as separate sub-skills
+- [ ] Master SKILL.md includes user-facing language rules (no "sub-skill" or "applet" jargon, `skill-name/file` paths)
 - [ ] Consider pinning for frequently-used sub-commands
