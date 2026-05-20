@@ -1,0 +1,9 @@
+{
+  "name": "@shdrs/skills",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "rebuild": "rm -rf dist && node scripts/build.mjs"
+  }
+}

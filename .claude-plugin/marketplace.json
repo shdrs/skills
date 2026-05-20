@@ -1,0 +1,23 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "shdrs-skills",
+  "metadata": {
+    "description": "Agent-agnostic skills for AI coding assistants. Installable across Claude Code, Codex, Gemini, Cursor, and 9+ other agents."
+  },
+  "owner": {
+    "name": "shdrs"
+  },
+  "plugins": [
+    {
+      "name": "mega-skill",
+      "description": "Adds opt-in architectural patterns (applets, multi-agent publishing, mega-skill routing, pinning) to any skill-creation workflow. Works alongside skill-creator plugins.",
+      "version": "1.0.0",
+      "author": {
+        "name": "shdrs"
+      },
+      "source": "./plugins/mega-skill",
+      "category": "productivity",
+      "tags": ["skills", "architecture", "multi-agent", "publishing"]
+    }
+  ]
+}
