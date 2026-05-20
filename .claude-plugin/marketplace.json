@@ -10,7 +10,7 @@
   "plugins": [
     {
       "name": "mega-skill",
-      "description": "Adds opt-in architectural patterns (applets, multi-agent publishing, mega-skill routing, pinning) to any skill-creation workflow. Works alongside skill-creator plugins.",
+      "description": "Addon to develop skills as one-command resolvers and publish those skills in an agent-agnostic format.",
       "author": {
         "name": "shdrs"
       },
@@ -20,7 +20,7 @@
     },
     {
       "name": "cytospec",
-      "description": "Extracts decisions from markdown files (specs, plans, design docs) and maps them into a graph. Produces a living artifact that grows across sessions — each run adds decisions, evidence accumulates, and the graph evolves as specs evolve.",
+      "description": "Turn .md specs into decision-graphs",
       "author": {
         "name": "shdrs"
       },
