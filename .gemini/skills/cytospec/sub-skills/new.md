@@ -403,7 +403,7 @@ The applet reads all `.json` files from both directories, concatenates decisions
 
 ## Step 7: Viewer and next steps
 
-After the session graph is written, copy the viewer to `docs/cytospec/viewer.html` if it doesn't already exist:
+After the session graph is written, copy a fresh viewer to `docs/cytospec/viewer.html`:
 
 ```bash
 cp {{applets_path}}/viewer.html docs/cytospec/viewer.html

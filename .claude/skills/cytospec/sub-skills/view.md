@@ -71,7 +71,7 @@ If any decisions are flagged `stale: true`, highlight them:
 
 ## Interactive viewer
 
-The viewer is a static HTML file that the user opens in their browser. Copy it from the applets directory to `docs/cytospec/viewer.html` if it doesn't already exist:
+The viewer is a static HTML file that the user opens in their browser. Always copy a fresh version from the applets directory — this ensures the user gets the latest viewer as the skill evolves:
 
 ```bash
 cp {{applets_path}}/viewer.html docs/cytospec/viewer.html
