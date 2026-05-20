@@ -180,11 +180,11 @@ Format:
 Report back ONLY: root_count, total_count, merges_performed.
 ```
 
-### SHUFFLE phase: Redistribute into bounded chunks
+### SHUFFLE phase: Redistribute into bounded chunks (mandatory)
 
-After all merge agents complete a round, the outputs need to be flattened and redistributed into new bounded-size chunks for the next round.
+**Every MAP phase is followed by a SHUFFLE.** No exceptions. You never pair merge outputs directly — they go through shuffle first, even if "they'd probably fit." The shuffle exists to enforce the sizing constraint AND to mix decisions across source files for cross-pollination.
 
-**Chunk size limit: ~40k characters** (verify with `wc -c`). This ensures each merge agent in the next round receives ≤ ~80k characters total across two chunks (~20k LLM tokens). A root with 50 quotes takes more space than a root with 2 quotes — character count captures this naturally.
+**Chunk size limit: ~40k characters** (verify with `wc -c`). This is a hard ceiling, not a guideline. The reasoning: each merge agent reads TWO chunks, so the combined input must stay ≤ ~80k characters (~20k LLM tokens). "Well within model context" is not a valid reason to exceed this — the limit protects output quality, not just context length. Overloaded agents produce shallow comparisons and miss merges.
 
 The shuffle is done by sub-agents (cheapest model — it's mechanical work):
 
@@ -218,7 +218,7 @@ Round 2: 450 roots → 310 roots (31% reduction, 85 merges) — 8 chunks, larges
 Round 3: 310 roots → 285 roots (8% reduction, 15 merges) — 7 chunks, largest 33k chars
 ```
 
-**If any chunk exceeds ~40k characters after shuffle, split it before pairing.** The sub-agent sizing rule is a hard constraint — never dispatch a merge agent with more than ~80k characters of combined input.
+**If any chunk exceeds ~40k characters after shuffle, re-split it before pairing.** Never dispatch a merge agent with more than ~80k characters of combined input. If you find yourself thinking "it's above the guideline but within context" — stop. That reasoning is exactly what the limit prevents. An agent processing 140k characters of decisions will skim instead of comparing carefully, and the whole point of the pipeline is careful comparison.
 
 **You decide when to stop.** Look at the trend:
 - Is the reduction rate flattening? (42% → 31% → 8% → clearly slowing)
