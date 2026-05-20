@@ -2,6 +2,8 @@
 name: cytospec
 description: Extracts decisions from markdown files (specs, plans, design docs) and maps them into a graph. Use this skill whenever someone wants to understand what decisions were made across their spec files, map out a decision pipeline, reduce a large corpus of markdown into browsable insights, visualize how specs relate to each other, or find hidden dependencies between design decisions. Also triggers when someone mentions decision graphs, spec analysis, decision mapping, spec consolidation, or asks things like 'what decisions did we make' or 'how do these specs connect.' Works on any .md file — one or thousands.
 license: MIT
+allowed-tools:
+  - Bash(node .pi/skills/cytospec/applets/viewer.mjs *)
 ---
 
 Extracts decisions from markdown files and maps how they relate — producing a graph that compresses large spec corpora into browsable, interconnected insights.

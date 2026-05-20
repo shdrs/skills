@@ -5,8 +5,8 @@ Architectural patterns for skill creators. Works as an addon alongside any skill
 ## Install
 
 ```
-/plugin marketplace add shdrs/skills
-/plugin install mega-skill@shdrs-skills
+/plugin marketplace add shdrs
+/plugin install mega-skill@shdrs
 ```
 
 ## What it does

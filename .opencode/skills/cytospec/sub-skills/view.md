@@ -69,16 +69,32 @@ If any decisions are flagged `stale: true`, highlight them:
     Sources: auth-spec.md (re-processed), cache-design.md
 ```
 
-## Future: Applet viewer
+## Interactive viewer
 
-A Cytoscape-based interactive viewer is planned as an applet for a future session. It will load `graph.json` directly and provide:
-- Zoomable graph with hierarchy collapse/expand
-- Edge promotion at zoomed-out levels
-- Focus-on-click for any decision node
-- Filter by tags, depth, staleness
-- Multiple rendering modes (overview, expanded, coupling)
+Launch the Cytoscape viewer to explore the graph visually. The viewer applet lives in the `applets/` directory alongside this skill — use the same base path you were loaded from, replacing `sub-skills/view.md` with `applets/viewer.mjs`:
 
-For now, the text-based exploration above serves as the interface.
+```bash
+node <skill-base>/applets/viewer.mjs docs/cytospec/graph.json
+```
+
+This starts a local server and outputs a JSON line with the URL. Open that URL for the user (or tell them to open it). The viewer loads the graph immediately — no file picker needed.
+
+If no graph path is provided, the viewer opens empty and the user can load a file via the file picker or drag-and-drop.
+
+### What the viewer provides
+
+- **Overview mode** — top-level decisions only. Cross-cutting edges between deeper decisions get **promoted** to their visible ancestors, so the user sees coupling at the strategic level. Double-click a node to drill into its subtree (focus mode).
+- **Expanded mode** — every decision at every depth, with full hierarchy edges and all cross-cutting connections.
+- **Coupling mode** — only shows decisions that have cross-cutting edges. Hides everything else. Answers "where are the hidden dependencies?"
+- **Focus mode** — click or double-click any decision to see its subtree plus all edges touching any node in that subtree. Breadcrumb navigation to walk back up.
+
+Nodes are sized and colored by depth (strategic → tactical → implementation). Edges are colored by type (depends-on, enables, constrains, contradicts) and dashed when inferred. Stale decisions get an amber dashed border.
+
+Clicking a node opens a detail panel with the full decision: explain, trace (why/over/impact with quotes), connections, sub-decisions, sources, and tags. Clicking a cross-cutting edge shows its evidence.
+
+### When to use the viewer vs text
+
+The text-based exploration above is better for quick lookups — "what are the top-level decisions?" or "show me decision X." The interactive viewer is better for exploration — discovering connections, understanding coupling, navigating the hierarchy spatially.
 
 ## Graph statistics
 

@@ -5,8 +5,8 @@ Extracts decisions from markdown files and maps them into a graph — hierarchy,
 ## Install
 
 ```
-/plugin marketplace add shdrs/skills
-/plugin install cytospec@shdrs-skills
+/plugin marketplace add shdrs
+/plugin install cytospec@shdrs
 ```
 
 ## What it does
@@ -52,6 +52,55 @@ Once the decision tree is stable, sub-agents compare branches pairwise to find c
 ### 4. Polish
 
 A final pass converts raw labels into full decision nodes: attaching verbatim quotes as evidence, generating concise synthesis grounded in those quotes, filling in rationale (`why`), alternatives (`over`), and downstream effects (`impact`). The result is written as the session's `graph.json`.
+
+## Data model
+
+The pipeline produces a `graph.json` conforming to this schema. Field ordering reflects the generation sequence — quotes are found first, then synthesis is derived from them.
+
+```
+Insight {
+  quotes: string[]           // verbatim evidence from source .md files
+  synthesis: string          // generated AFTER finding quotes — concise, 0 filler words
+}
+
+Decision {
+  label: Insight             // THE ID — label.synthesis is a unique single sentence
+  parent: string | null      // label.synthesis of parent decision (hierarchy)
+  depth: number              // 0=strategic, 1=tactical, 2=implementation
+  sources: string[]          // .md file paths that contributed evidence
+
+  trace: {
+    why:    Insight[]        // reasons this decision was made (empty if none found)
+    over:   Insight[]        // alternatives considered (empty if none stated)
+    impact: Insight[]        // tradeoffs and downstream effects (interpretation OK)
+  }
+  explain: string            // extends label without repeating it
+  tags: string[]             // topic tags for clustering/filtering
+
+  // Living artifact metadata (added during merge into master)
+  source_verified: {}        // file → ISO timestamp when last verified
+  first_seen: string         // when first added to master
+  last_verified: string      // when last confirmed by a session
+  stale: boolean             // flagged if source re-processed but decision missing
+}
+
+Edge {
+  type: "depends-on" | "enables" | "constrains" | "contradicts"
+  from: string               // decision label.synthesis
+  to: string                 // decision label.synthesis
+  insight: Insight           // quote-backed evidence this connection exists
+  strength: "explicit" | "inferred"
+}
+
+DecisionGraph {
+  decisions: Decision[]
+  edges: Edge[]
+}
+```
+
+Every `Insight` enforces the quote-first discipline: the `quotes` array must contain verbatim excerpts from source files before `synthesis` is generated. No quotes means no synthesis — the pipeline never fabricates rationale or connections.
+
+Decisions form a tree through `parent` references and `depth` levels (strategic → tactical → implementation). Edges cut across that tree to capture relationships that the hierarchy alone can't express — a JWT authentication decision might `depend-on` a stateless API constraint from a completely different spec file.
 
 ## The living artifact
 

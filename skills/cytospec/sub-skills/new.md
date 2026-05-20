@@ -18,9 +18,12 @@ Identify the files to process. The user may provide:
 - Nothing → ask which files or directories to process
 
 **Do NOT read any input .md files yourself.** Use Bash commands only:
-- `wc -l <file>` for line counts
+- `wc -c <file>` for character counts (primary sizing metric — 4 chars ≈ 1 LLM token)
+- `wc -l <file>` for line counts (needed to calculate line ranges for the Read tool)
 - `stat -f '%Sm' -t '%Y-%m-%dT%H:%M:%SZ' <file>` (macOS) or `stat -c '%y' <file>` (Linux) for real modification timestamps
 - Never infer timestamps from filenames
+
+**Sub-agent sizing rule: no sub-agent should receive more than ~80k characters of input data (~20k LLM tokens).** For merge agents reading two files, each file must be ≤ ~40k characters. Use `wc -c` to verify sizes before dispatching.
 
 Create the session scope:
 ```
@@ -35,8 +38,8 @@ Write `metadata.json` with the files being processed and their actual modificati
 ```json
 {
   "files": {
-    "specs/api-design.md": { "modified_at": "2026-05-20T09:15:32Z", "lines": 2400 },
-    "specs/auth-spec.md": { "modified_at": "2026-05-19T14:22:07Z", "lines": 800 }
+    "specs/api-design.md": { "modified_at": "2026-05-20T09:15:32Z", "chars": 95000, "lines": 2400 },
+    "specs/auth-spec.md": { "modified_at": "2026-05-19T14:22:07Z", "chars": 32000, "lines": 800 }
   },
   "created_at": "2026-05-20T15:00:00Z"
 }
@@ -44,7 +47,9 @@ Write `metadata.json` with the files being processed and their actual modificati
 
 ## Step 2: Extract decisions (parallel, cheap model)
 
-Split each file into ~1000 line chunks with ~100 line overlap. Launch one sub-agent per chunk using the cheapest/fastest available model.
+Split each file into chunks of **~80k characters** with **~8k character overlap**. Use `wc -c` and `wc -l` to compute the average characters per line for each file, then derive line ranges that fit the character budget. Launch one sub-agent per chunk using the cheapest/fastest available model.
+
+Each chunk's line range is passed to the sub-agent for the Read tool — the character budget just determines where you draw the boundaries.
 
 ### Extraction sub-agent prompt
 
@@ -179,7 +184,7 @@ Report back ONLY: root_count, total_count, merges_performed.
 
 After all merge agents complete a round, the outputs need to be flattened and redistributed into new bounded-size chunks for the next round.
 
-**Chunk size limit: ~1500 LOC.** This is measured in data volume (lines of JSON), not item count. A root with 50 quotes takes more space than a root with 2 quotes — LOC captures this naturally.
+**Chunk size limit: ~40k characters** (verify with `wc -c`). This ensures each merge agent in the next round receives ≤ ~80k characters total across two chunks (~20k LLM tokens). A root with 50 quotes takes more space than a root with 2 quotes — character count captures this naturally.
 
 The shuffle is done by sub-agents (cheapest model — it's mechanical work):
 
@@ -188,7 +193,7 @@ Read the following merge outputs from round {N}:
 {list of merge output paths}
 
 Collect all root-level decisions (with their subtrees).
-Redistribute them into new chunk files, each no larger than ~1500 lines of JSON.
+Redistribute them into new chunk files, each no larger than ~40k characters.
 
 Strategy for distribution:
 - Mix decisions from different source files into the same chunk
@@ -205,13 +210,15 @@ If the total data is too large for one shuffle agent, split the shuffle itself a
 
 ### Delegator's role in the loop
 
-You track the following after each round:
+You track the following after each round. Run `wc -c` on every output file to verify sizes before pairing in the next round:
 
 ```
-Round 1: 777 roots → 450 roots (42% reduction, 180 merges)
-Round 2: 450 roots → 310 roots (31% reduction, 85 merges)
-Round 3: 310 roots → 285 roots (8% reduction, 15 merges)
+Round 1: 777 roots → 450 roots (42% reduction, 180 merges) — 12 chunks, largest 38k chars
+Round 2: 450 roots → 310 roots (31% reduction, 85 merges) — 8 chunks, largest 35k chars
+Round 3: 310 roots → 285 roots (8% reduction, 15 merges) — 7 chunks, largest 33k chars
 ```
+
+**If any chunk exceeds ~40k characters after shuffle, split it before pairing.** The sub-agent sizing rule is a hard constraint — never dispatch a merge agent with more than ~80k characters of combined input.
 
 **You decide when to stop.** Look at the trend:
 - Is the reduction rate flattening? (42% → 31% → 8% → clearly slowing)

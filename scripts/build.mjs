@@ -61,19 +61,28 @@ function transformSkills(skills, config, distDir) {
   for (const skill of skills) {
     const skillDir = path.join(skillsOutDir, skill.name);
 
+    const appletsPath = `${configDir}/skills/${skill.name}/applets`;
+
     // --- Frontmatter ---
     const fm = { name: skill.name, description: skill.description };
     for (const spec of activeFields) {
       if (spec.condition && !spec.condition(skill)) continue;
-      const val = spec.value ? spec.value(skill) : skill[spec.sourceKey];
-      if (val) fm[spec.yamlKey] = val;
+      let val = spec.value ? spec.value(skill) : skill[spec.sourceKey];
+      if (val) {
+        // Resolve {{applets_path}} in frontmatter values (e.g. allowed-tools)
+        if (typeof val === 'string') {
+          val = val.replace(/\{\{applets_path\}\}/g, appletsPath);
+        } else if (Array.isArray(val)) {
+          val = val.map((v) => (typeof v === 'string' ? v.replace(/\{\{applets_path\}\}/g, appletsPath) : v));
+        }
+        fm[spec.yamlKey] = val;
+      }
     }
     const frontmatter = generateYamlFrontmatter(fm);
 
     // --- Body ---
     let body = compileProviderBlocks(skill.body, providerTags);
     body = replacePlaceholders(body, placeholderKey, allSkillNames);
-    const appletsPath = `${configDir}/skills/${skill.name}/applets`;
     body = body.replace(/\{\{applets_path\}\}/g, appletsPath);
 
     writeFile(path.join(skillDir, 'SKILL.md'), `${frontmatter}\n\n${body}\n`);
