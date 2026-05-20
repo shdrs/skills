@@ -1,59 +1,36 @@
 #!/usr/bin/env node
 
-// shuffle.mjs — Redistribute merge outputs into bounded, cross-pollinated chunks.
+// shuffle.mjs — Split merge outputs into diverse, size-bounded chunks.
 //
-// Primary flow (guided by a sub-agent):
-//   1. node shuffle.mjs --manifest <round> <file1.json> ...
-//      → outputs a lightweight label manifest for a sub-agent to group
-//   2. Sub-agent reads manifest, writes assignments JSON
-//   3. node shuffle.mjs --assignments <file> <output-dir> <round> <file1.json> ...
-//      → packs subtrees according to the assignments
+// Usage:
+//   node shuffle.mjs <output-dir> <round> <file1.json> [file2.json ...]
 //
-// Fallback (no sub-agent):
-//   node shuffle.mjs <output-dir> <round> <file1.json> ...
-//      → falls back to round-robin interleaving across source files
+// Reads merge output JSON files, normalizes nested source arrays,
+// groups decisions into subtrees (root + descendants), interleaves
+// subtrees round-robin across source files for diversity, and packs
+// into chunks that respect a character limit.
+//
+// The report includes per-chunk label summaries so a pairing sub-agent
+// can decide which chunks to pair for the next MAP phase.
 //
 // Env:
 //   MAX_CHARS — max characters per output chunk (default: 40000)
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, basename } from 'node:path';
 
-// --- Parse args ---
-
-const rawArgs = process.argv.slice(2);
-let strategy = 'interleave';
-let assignmentsFile = null;
-let manifestMode = false;
-const positional = [];
-
-for (let i = 0; i < rawArgs.length; i++) {
-  if (rawArgs[i] === '--strategy' && rawArgs[i + 1]) {
-    strategy = rawArgs[++i];
-  } else if (rawArgs[i] === '--assignments' && rawArgs[i + 1]) {
-    assignmentsFile = rawArgs[++i];
-    strategy = 'guided';
-  } else if (rawArgs[i] === '--manifest') {
-    manifestMode = true;
-  } else {
-    positional.push(rawArgs[i]);
-  }
-}
-
-if (positional.length < 3 && !manifestMode) {
-  console.error('Usage: node shuffle.mjs [--strategy interleave|cluster|guided] [--assignments file] <output-dir> <round> <file1.json> ...');
-  console.error('       node shuffle.mjs --manifest <round> <file1.json> ...');
+const args = process.argv.slice(2);
+if (args.length < 3) {
+  console.error('Usage: node shuffle.mjs <output-dir> <round-number> <file1.json> [file2.json ...]');
   process.exit(1);
 }
 
-// In manifest mode, first positional is round, rest are files.
-// In normal mode, first is output-dir, second is round, rest are files.
-const outputDir = manifestMode ? null : positional[0];
-const round = parseInt(manifestMode ? positional[0] : positional[1], 10);
-const inputFiles = manifestMode ? positional.slice(1) : positional.slice(2);
+const outputDir = args[0];
+const round = parseInt(args[1], 10);
+const inputFiles = args.slice(2);
 const maxChars = parseInt(process.env.MAX_CHARS || '40000', 10);
 
-if (outputDir) mkdirSync(outputDir, { recursive: true });
+mkdirSync(outputDir, { recursive: true });
 
 // --- Helpers ---
 
@@ -86,7 +63,7 @@ function flattenSources(d) {
   return [...result];
 }
 
-// --- Read all merge outputs ---
+// --- Read all merge outputs and normalize ---
 
 const allDecisions = [];
 const inputSummary = [];
@@ -102,6 +79,8 @@ for (const file of inputFiles) {
 }
 
 // --- Build subtrees ---
+// Each subtree = one root decision + all its descendants.
+// Subtrees are atomic — never split across chunks.
 
 function buildSubtrees(decisions) {
   const roots = [];
@@ -148,7 +127,8 @@ function buildSubtrees(decisions) {
 
 const subtrees = buildSubtrees(allDecisions);
 
-// --- Group subtrees by primary source ---
+// --- Round-robin interleave across source files ---
+// Makes every chunk diverse so any pairing produces useful cross-file comparisons.
 
 const bySource = new Map();
 for (const tree of subtrees) {
@@ -157,159 +137,22 @@ for (const tree of subtrees) {
   bySource.get(source).push(tree);
 }
 
-// --- Manifest mode ---
-// Output lightweight label + source info for a sub-agent to produce grouping assignments.
+const sourceQueues = [...bySource.values()];
+const indices = sourceQueues.map(() => 0);
+const interleaved = [];
 
-if (manifestMode) {
-  const manifest = subtrees.map((tree, i) => ({
-    index: i,
-    label: getLabel(tree[0]),
-    children: tree.length - 1,
-    chars: JSON.stringify(tree, null, 2).length,
-    sources: tree[0].sources || [],
-    context_hint: tree[0].context_hint || null,
-  }));
-
-  console.log(JSON.stringify({
-    round,
-    total_subtrees: subtrees.length,
-    total_decisions: allDecisions.length,
-    source_files: [...bySource.keys()],
-    max_chars_per_chunk: maxChars,
-    manifest,
-  }, null, 2));
-  process.exit(0);
-}
-
-// --- Ordering strategies ---
-
-function interleaveOrder(subtrees, bySource) {
-  // Round-robin individual subtrees across source groups.
-  // Maximizes cross-file exposure: each chunk gets decisions from many sources.
-  // Cost: scatters same-file siblings across different chunks.
-  const sourceQueues = [...bySource.values()];
-  const indices = sourceQueues.map(() => 0);
-  const ordered = [];
-
-  let active = sourceQueues.length;
-  while (active > 0) {
-    for (let i = 0; i < sourceQueues.length; i++) {
-      if (indices[i] < sourceQueues[i].length) {
-        ordered.push(sourceQueues[i][indices[i]]);
-        indices[i]++;
-        if (indices[i] >= sourceQueues[i].length) active--;
-      }
+let active = sourceQueues.length;
+while (active > 0) {
+  for (let i = 0; i < sourceQueues.length; i++) {
+    if (indices[i] < sourceQueues[i].length) {
+      interleaved.push(sourceQueues[i][indices[i]]);
+      indices[i]++;
+      if (indices[i] >= sourceQueues[i].length) active--;
     }
   }
-  return ordered;
 }
 
-function clusterOrder(subtrees, bySource) {
-  // Keep same-source subtrees together in clusters, interleave clusters across sources.
-  // Each chunk gets clusters from multiple sources (cross-file dedup) while
-  // keeping same-file relationships intact (hierarchy and sibling discovery).
-  //
-  // Algorithm: sort source groups by size (largest first for better bin packing),
-  // then emit clusters in round-robin order. A "cluster" is a batch of subtrees
-  // from the same source that fits within ~1/3 of the chunk budget, so each chunk
-  // gets clusters from 2-4 different sources.
-  const targetClusterChars = Math.floor(maxChars / 3);
-  const sourceGroups = [...bySource.entries()]
-    .sort((a, b) => b[1].length - a[1].length); // largest source first
-
-  // Split each source's subtrees into cluster-sized batches
-  const allClusters = [];
-  for (const [source, trees] of sourceGroups) {
-    let cluster = [];
-    let clusterSize = 0;
-    for (const tree of trees) {
-      const treeSize = JSON.stringify(tree, null, 2).length;
-      if (clusterSize + treeSize > targetClusterChars && cluster.length > 0) {
-        allClusters.push({ source, trees: cluster });
-        cluster = [];
-        clusterSize = 0;
-      }
-      cluster.push(tree);
-      clusterSize += treeSize;
-    }
-    if (cluster.length > 0) {
-      allClusters.push({ source, trees: cluster });
-    }
-  }
-
-  // Round-robin clusters across sources
-  const clustersBySource = new Map();
-  for (const c of allClusters) {
-    if (!clustersBySource.has(c.source)) clustersBySource.set(c.source, []);
-    clustersBySource.get(c.source).push(c);
-  }
-
-  const queues = [...clustersBySource.values()];
-  const indices = queues.map(() => 0);
-  const ordered = [];
-
-  let active = queues.length;
-  while (active > 0) {
-    for (let i = 0; i < queues.length; i++) {
-      if (indices[i] < queues[i].length) {
-        // Emit all trees in this cluster sequentially
-        ordered.push(...queues[i][indices[i]].trees);
-        indices[i]++;
-        if (indices[i] >= queues[i].length) active--;
-      }
-    }
-  }
-  return ordered;
-}
-
-function guidedOrder(subtrees, assignmentsFile) {
-  // Pack subtrees according to externally-provided group assignments.
-  // Assignments file format: { "assignments": { "<label>": <group_number>, ... } }
-  // Subtrees with the same group number are placed adjacently.
-  // Unassigned subtrees are appended at the end.
-  const raw = JSON.parse(readFileSync(assignmentsFile, 'utf8'));
-  const assignments = raw.assignments || raw;
-
-  const groups = new Map(); // group_number -> subtrees[]
-  const unassigned = [];
-
-  for (const tree of subtrees) {
-    const label = getLabel(tree[0]);
-    const group = assignments[label];
-    if (group !== undefined) {
-      if (!groups.has(group)) groups.set(group, []);
-      groups.get(group).push(tree);
-    } else {
-      unassigned.push(tree);
-    }
-  }
-
-  // Emit groups in order, then unassigned
-  const ordered = [];
-  const sortedGroups = [...groups.keys()].sort((a, b) => a - b);
-  for (const g of sortedGroups) {
-    ordered.push(...groups.get(g));
-  }
-  ordered.push(...unassigned);
-  return ordered;
-}
-
-// --- Apply strategy ---
-
-let ordered;
-if (strategy === 'cluster') {
-  ordered = clusterOrder(subtrees, bySource);
-} else if (strategy === 'guided') {
-  if (!assignmentsFile || !existsSync(assignmentsFile)) {
-    console.error('guided strategy requires --assignments <file>');
-    process.exit(1);
-  }
-  ordered = guidedOrder(subtrees, assignmentsFile);
-} else {
-  ordered = interleaveOrder(subtrees, bySource);
-}
-
-// --- Pack into chunks ---
+// --- Pack into size-bounded chunks ---
 
 function measureChunk(decisions) {
   const srcSet = new Set();
@@ -327,7 +170,7 @@ function measureChunk(decisions) {
 const chunks = [];
 let current = [];
 
-for (const tree of ordered) {
+for (const tree of interleaved) {
   if (measureChunk(tree) > maxChars) {
     if (current.length > 0) {
       chunks.push(current);
@@ -366,7 +209,6 @@ for (let i = 0; i < chunks.length; i++) {
   const output = {
     round,
     source: 'shuffle',
-    strategy,
     sources,
     decisions,
     root_count: rootCount,
@@ -377,22 +219,25 @@ for (let i = 0; i < chunks.length; i++) {
   const chunkFile = `chunk-${i + 1}.json`;
   writeFileSync(join(outputDir, chunkFile), json + '\n');
 
+  // Per-chunk summary: labels + sources so the pairing sub-agent
+  // knows what's in each chunk without reading the files.
   chunkStats.push({
     file: chunkFile,
+    path: join(outputDir, chunkFile),
     chars: json.length,
     roots: rootCount,
     total: totalCount,
     sources,
+    labels: decisions.filter(d => !d.parent).map(getLabel),
   });
 }
 
-// --- Report ---
+// --- Report (stdout JSON) ---
 
 console.log(JSON.stringify({
   round,
-  strategy,
   input_files: inputSummary,
-  source_files_seen: [...bySource.keys()],
+  source_files: [...bySource.keys()],
   subtrees: subtrees.length,
   orphans: subtrees.filter(t => t.length === 1 && t[0].parent).length,
   chunks_written: chunks.length,

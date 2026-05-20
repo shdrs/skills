@@ -186,39 +186,61 @@ Report back ONLY: root_count, total_count, merges_performed.
 
 **Chunk size limit: ~40k characters** (verify with `wc -c`). This is a hard ceiling, not a guideline. The reasoning: each merge agent reads TWO chunks, so the combined input must stay ≤ ~80k characters (~20k LLM tokens). "Well within model context" is not a valid reason to exceed this — the limit protects output quality, not just context length. Overloaded agents produce shallow comparisons and miss merges.
 
-The shuffle has two steps: a sub-agent groups decisions semantically, then the applet packs them into size-bounded chunks. This costs one cheap sub-agent per shuffle but produces much better pairings — decisions about related concerns from different files land in the same chunk, leading to more merges per round and fewer total rounds.
+The shuffle has two parts: the applet splits decisions into diverse, size-bounded chunks, then a sub-agent decides which chunks to pair for the next MAP round.
 
-**Step 1: Generate a manifest** of decision labels (lightweight — just labels, sources, context hints, no full data):
-
-```bash
-node {{applets_path}}/shuffle.mjs --manifest {round} {merge_output_1} {merge_output_2} ...
-```
-
-**Step 2: Dispatch a sub-agent** (cheapest model) to read the manifest and produce grouping assignments:
-
-```
-Read the manifest at {manifest_path}. It contains {N} decision labels
-from a consolidation pipeline.
-
-Group decisions that should be compared in the next merge round.
-Good groups contain decisions that are likely duplicates across files,
-potential parent-child pairs, or closely related concerns from different
-source files. Each group should be small enough that its combined chars
-(listed in the manifest) fit well under {max_chars} characters.
-
-Write to: {assignments_path}
-Format: { "assignments": { "<label>": <group_number>, ... } }
-```
-
-**Step 3: Shuffle** using the assignments:
+**Part 1: Split** — run the shuffle applet:
 
 ```bash
-node {{applets_path}}/shuffle.mjs --assignments {assignments_path} {output_dir} {round} {merge_outputs...}
+node {{applets_path}}/shuffle.mjs {output_dir} {round} {merge_output_1} {merge_output_2} ...
 ```
 
-The applet reads all merge outputs, normalizes sources, groups decisions into subtrees (root + descendants — never split), packs them according to the assignments, and reports chunk count, sizes, and source coverage as JSON to stdout.
+The applet reads all merge outputs, normalizes sources, groups decisions into subtrees (root + descendants — never split across chunks), interleaves subtrees round-robin across source files so every chunk is diverse, and packs them into size-bounded chunks. Override the default 40k limit with `MAX_CHARS=50000` env var if needed.
 
-Override the default 40k limit with `MAX_CHARS=50000` env var if needed.
+The applet prints a JSON report to stdout with per-chunk summaries:
+
+```json
+{
+  "chunks_written": 10,
+  "max_chunk_chars": 39985,
+  "chunks": [
+    {
+      "file": "chunk-1.json",
+      "path": "/absolute/path/chunk-1.json",
+      "chars": 39981,
+      "roots": 43,
+      "total": 47,
+      "sources": ["spec-a.md", "spec-b.md", "spec-c.md"],
+      "labels": ["Use JWT for auth", "PostgreSQL for persistence", "..."]
+    }
+  ]
+}
+```
+
+The `labels` and `sources` arrays are the key outputs — they tell the pairing sub-agent what's in each chunk without reading the files.
+
+**Part 2: Pair** — dispatch a sub-agent (cheapest model) to decide which chunks to merge next:
+
+```
+Here is the shuffle report from round {N} of a decision consolidation pipeline.
+There are {chunk_count} chunks to pair for the next merge round.
+
+{paste the full JSON report from stdout}
+
+Decide which chunks to pair. Each merge agent will take exactly TWO chunks
+and compare all root-level decisions between them using venn diagram analysis.
+The goal is to maximize useful merges — pair chunks that contain:
+- Likely duplicates (similar labels from different source files)
+- Potential parent-child relationships (broad vs narrow decisions on same topic)
+- Related concerns that haven't been cross-compared yet
+
+If there's an odd number of chunks, one goes unpaired to the next round.
+
+Output a JSON array of pairs (by filename):
+{ "pairs": [["chunk-1.json", "chunk-4.json"], ["chunk-2.json", "chunk-7.json"], ...] }
+If a chunk is unpaired: { "unpaired": ["chunk-10.json"] }
+```
+
+Parse the sub-agent's output and dispatch merge agents for each pair.
 
 ### Delegator's role in the loop
 
@@ -239,7 +261,7 @@ Round 3: 310 roots → 285 roots (8% reduction, 15 merges) — 7 chunks, largest
 
 There's no formula. Use your judgment. If the curve is clearly flattening and another round would save a handful of merges at best, stop and move to edge discovery.
 
-**You can also direct the shuffle strategically.** You know which source files each chunk covers (from the summaries). If you notice that "scoring-algorithm" and "signal-tuner" chunks haven't been cross-compared yet, tell the shuffle agent to pair decisions from those sources together in the next round.
+**You can also direct the pairing strategically.** You know which source files each chunk covers (from the shuffle report). If you notice that "scoring-algorithm" and "signal-tuner" chunks haven't been cross-compared yet, add that as guidance to the pairing sub-agent's prompt for the next round.
 
 ### Odd-numbered chunks
 
