@@ -4,6 +4,7 @@ description: Extracts decisions from markdown files (specs, plans, design docs) 
 license: MIT
 allowed-tools:
   - Bash(node .pi/skills/cytospec/applets/viewer.mjs *)
+  - Bash(node .pi/skills/cytospec/applets/shuffle.mjs *)
 ---
 
 Extracts decisions from markdown files and maps how they relate — producing a graph that compresses large spec corpora into browsable, interconnected insights.

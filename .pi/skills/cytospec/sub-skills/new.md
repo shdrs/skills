@@ -186,27 +186,20 @@ Report back ONLY: root_count, total_count, merges_performed.
 
 **Chunk size limit: ~40k characters** (verify with `wc -c`). This is a hard ceiling, not a guideline. The reasoning: each merge agent reads TWO chunks, so the combined input must stay ≤ ~80k characters (~20k LLM tokens). "Well within model context" is not a valid reason to exceed this — the limit protects output quality, not just context length. Overloaded agents produce shallow comparisons and miss merges.
 
-The shuffle is done by sub-agents (cheapest model — it's mechanical work):
+Run the shuffle applet — no sub-agent needed, this is deterministic:
 
-```
-Read the following merge outputs from round {N}:
-{list of merge output paths}
-
-Collect all root-level decisions (with their subtrees).
-Redistribute them into new chunk files, each no larger than ~40k characters.
-
-Strategy for distribution:
-- Mix decisions from different source files into the same chunk
-  (this ensures cross-file decisions meet each other in the next round)
-- Keep each root decision together with its children (don't split subtrees)
-
-Write new chunks to: {round_N+1_chunks_dir}/chunk-{M}.json
-Same format as merge output.
-
-Report back ONLY: number of chunks written, total root count.
+```bash
+node {{applets_path}}/shuffle.mjs {round_N+1_chunks_dir} {N+1} {merge_output_1} {merge_output_2} ...
 ```
 
-If the total data is too large for one shuffle agent, split the shuffle itself across multiple agents — each handles a subset of merge outputs and writes its own chunk files.
+The applet:
+- Reads all merge outputs and normalizes nested `sources` arrays
+- Groups decisions into subtrees (root + descendants — never split)
+- Interleaves subtrees round-robin across source files for cross-pollination
+- Packs into chunks capped at 40k characters (the full output JSON, not just decisions)
+- Reports chunk count, sizes, and source coverage as JSON to stdout
+
+Override the default 40k limit with `MAX_CHARS=50000` env var if needed.
 
 ### Delegator's role in the loop
 

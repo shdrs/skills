@@ -6,6 +6,7 @@ argument-hint: "[new|merge|view|status] [path/to/specs/ or file1.md ...]"
 license: MIT
 allowed-tools:
   - Bash(node {{applets_path}}/viewer.mjs *)
+  - Bash(node {{applets_path}}/shuffle.mjs *)
 ---
 
 Extracts decisions from markdown files and maps how they relate — producing a graph that compresses large spec corpora into browsable, interconnected insights.
