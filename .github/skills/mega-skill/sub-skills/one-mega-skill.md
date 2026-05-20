@@ -19,6 +19,74 @@ When NOT to use this:
 - There are only 1-2 commands — the overhead isn't worth it.
 - Different capabilities need different descriptions for activation (they trigger on different contexts).
 
+## Sub-skills are user tasks, not pipeline stages
+
+The most common mega-skill mistake: structuring sub-skills around what the system does internally instead of what users want to do. Each sub-skill should represent a task a user would initiate, not an implementation step in a processing pipeline.
+
+**Wrong — pipeline stages as sub-skills:**
+
+```
+cytospec/
+├── SKILL.md
+└── sub-skills/
+    ├── extraction.md      # step 1 of internal pipeline
+    ├── tournament.md      # step 2 of internal pipeline
+    ├── edges.md           # step 3 of internal pipeline
+    └── merge.md           # step 4 of internal pipeline
+```
+
+No user would type `/cytospec extraction` or `/cytospec tournament`. These are implementation internals — the user wants to create a spec, not manually walk through processing stages.
+
+**Right — user-facing tasks as sub-skills:**
+
+```
+cytospec/
+├── SKILL.md
+└── sub-skills/
+    ├── new.md             # "create a spec from this codebase"
+    ├── merge.md           # "merge new code into existing spec"
+    ├── view.md            # "show me the current spec"
+    └── status.md          # "what's the spec coverage?"
+```
+
+The pipeline (extraction → tournament → edges → merge) still exists, but it lives INSIDE `new.md` and `merge.md` as implementation steps the agent follows — not as separate sub-skills the user navigates.
+
+### The litmus test
+
+For every sub-skill file you're about to create, ask:
+
+> **"Would a user ever type this as a command?"**
+
+- `/my-skill audit` — yes, a user wants to audit something. **Sub-skill.**
+- `/my-skill extraction` — no, that's step 1 of a pipeline. **Implementation detail — embed it in the sub-skill that uses it.**
+
+If the answer is no, it belongs inside a user-facing sub-skill as steps, or as a reference file the sub-skill points to (e.g., `sub-skills/reference/pipeline-spec.md`).
+
+### Before choosing sub-skills: brainstorm user tasks
+
+Before deciding your sub-skill structure, answer this question:
+
+> **"What tasks would users of this skill need to perform?"**
+
+Write out the answer as a plain list of user actions — verbs, not nouns:
+
+- "Create a new X from this codebase"
+- "Update an existing X with new changes"
+- "View the current X"
+- "Check the status of X"
+- "Export X to a different format"
+
+Each item on that list is a candidate sub-skill. Internal processing steps that serve those tasks are not.
+
+### Where implementation details go
+
+| What it is | Where it belongs |
+|---|---|
+| User-initiated task | Sub-skill file (`sub-skills/new.md`) |
+| Multi-step pipeline serving a task | Steps within that sub-skill file |
+| Shared algorithm used by multiple sub-skills | Reference file (`sub-skills/reference/algorithm.md`) linked from each sub-skill that uses it |
+| Reusable executable logic | Applet (`applets/process.mjs`) called from sub-skill steps |
+
 ## Structure
 
 ```
@@ -169,10 +237,13 @@ Sub-skills inherit this context because the agent always loads the master SKILL.
 
 ## Checklist
 
+- [ ] Every sub-skill represents a user-facing task, not a pipeline stage (litmus test: "would a user type this?")
+- [ ] Brainstormed user tasks before deciding sub-skill structure
 - [ ] Master SKILL.md has comprehensive description covering ALL sub-commands
 - [ ] Every sub-command has a matching sub-skill file
 - [ ] Commands table links to every sub-skill file
 - [ ] Routing rules cover: no arg, match, no match
 - [ ] `command-metadata.json` lists every sub-command
 - [ ] Shared setup/principles live in the master, not duplicated in sub-skills
+- [ ] Implementation pipelines are embedded within user-facing sub-skills, not exposed as separate sub-skills
 - [ ] Consider pinning for frequently-used sub-commands
