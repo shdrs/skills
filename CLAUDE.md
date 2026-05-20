@@ -11,8 +11,7 @@ Users install through `shdrs/skills` as a Claude Code marketplace, or clone/subm
 ## Commands
 
 ```bash
-node scripts/build.mjs     # build all skills for all 13 providers
-rm -rf dist && node scripts/build.mjs   # clean rebuild
+node scripts/build.mjs     # build all skills for all 13 providers (always clean)
 claude plugin validate .    # validate marketplace + plugin manifests
 ```
 

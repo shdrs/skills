@@ -4,7 +4,6 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "rebuild": "rm -rf dist && node scripts/build.mjs",
-    "invalidate": "rm -rf ~/.claude/plugins/cache/shdrs-skills/"
+    "update": "claude plugin update cytospec && claude plugin update mega-skill"
   }
 }

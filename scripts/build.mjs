@@ -131,7 +131,6 @@ function buildPluginSubtrees(distDir, rootDir, skills) {
     const manifest = {
       name: skill.name,
       description: skill.description,
-      version: '1.0.0',
       author: { name: 'shdrs' },
       skills: './skills/',
     };
@@ -156,6 +155,8 @@ function buildPluginSubtrees(distDir, rootDir, skills) {
 
 function build() {
   console.log('Building skills for all providers...\n');
+
+  if (fs.existsSync(DIST_DIR)) fs.rmSync(DIST_DIR, { recursive: true });
 
   const { skills } = readSourceSkills(ROOT_DIR);
   if (skills.length === 0) {

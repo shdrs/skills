@@ -6,19 +6,10 @@ A marketplace of agent-agnostic skills for Claude Code, Cursor, Gemini, Codex, a
 
 ```bash
 node scripts/build.mjs          # build all skills for all providers
-rm -rf dist && node scripts/build.mjs   # clean rebuild
 ```
 
-After pushing changes, invalidate the local plugin cache so Claude Code picks up the new version on next restart:
+After pushing changes, pull the latest into your local Claude Code (restart required to apply):
 
 ```bash
-rm -rf ~/.claude/plugins/cache/shdrs-skills/
+bun run update
 ```
-
-Or use the shortcut:
-
-```bash
-bun run invalidate
-```
-
-Note: run this from your terminal, not from within Claude Code.
