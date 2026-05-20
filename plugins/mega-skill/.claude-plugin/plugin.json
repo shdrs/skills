@@ -1,0 +1,9 @@
+{
+  "name": "mega-skill",
+  "description": "Use alongside any skill-creation workflow. Triggers when the user is creating, designing, or architecting a new skill and could benefit from advanced structural patterns. Covers three opt-in concepts: applets (shipping executable code with a skill), multi-agent publishing (making a skill work across Claude, Codex, Gemini, Cursor, and 9+ other agents), and the mega-skill architecture (one slash command that routes to many sub-skills). Also covers pinning (promoting sub-commands to standalone shortcuts). This is an addon — it does not replace skill-creation tools like skill-creator, it extends them with architectural patterns. Use whenever someone mentions creating skills, skill architecture, multi-agent skills, skill scripts, skill publishing, or structuring a skill with sub-commands.",
+  "version": "1.0.0",
+  "author": {
+    "name": "shdrs"
+  },
+  "skills": "./skills/"
+}
