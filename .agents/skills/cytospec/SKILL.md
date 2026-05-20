@@ -72,10 +72,32 @@ DecisionGraph {
 }
 ```
 
+## Talking to the user
+
+Never say "sub-skill" or "applet." Present all files as `cytospec/filename`, stripping internal directories like `sub-skills/` and `applets/`:
+
+| ❌ Don't say | ✅ Say instead |
+|---|---|
+| "Loading the `new` sub-skill" | "Loading `cytospec/new.md`" |
+| "Running the viewer applet" | "Running `cytospec/viewer.mjs`" or "Running the viewer" |
+| "Opening `cytospec/applets/dashboard/index.html`" | "Opening `cytospec/dashboard/index.html`" |
+
+Also avoid pipeline jargon — the user doesn't need to hear about "map-reduce rounds," "shuffle phases," or "pairwise merge agents." Describe what's happening in plain terms: "comparing decisions across files," "deduplicating," "looking for connections." The internals are your concern, not theirs.
+
+## Before starting a pipeline run
+
+When beginning a `new` session, briefly tell the user what's about to happen in plain language. Ground it in *their* files, not in abstract pipeline stages. Something like:
+
+> I'll analyze your 4 JACG spec files and extract every decision the authors committed to — architecture choices, technology picks, tradeoffs, rejections. Then I'll cross-compare everything to deduplicate and build a hierarchy, and finally map out how decisions in different areas connect to each other.
+>
+> This is a deep analysis — I'll be dispatching many sub-agents to read, compare, and consolidate in parallel. For 4 files it should take a few minutes; for a larger corpus it can take significantly longer and use a lot of tokens. You can stop the generation at any point without losing work — all progress is saved to disk as it happens.
+
+Adapt the details to the actual situation — number of files, what they're about, estimated scope. Don't recite a template. The point is: the user should understand (1) what they'll get, (2) that it's compute-intensive, and (3) that they're in control.
+
 ## Commands
 
-| Command | What the user wants | Sub-skill |
-|---------|-------------------|-----------|
+| Command | What the user wants | Guide |
+|---------|-------------------|-------|
 | `$cytospec new specs/` | "Analyze these spec files" | [new](sub-skills/new.md) |
 | `$cytospec merge` | "Merge my latest session into the master" | [merge](sub-skills/merge.md) |
 | `$cytospec view` | "Show me the decision graph" | [view](sub-skills/view.md) |
@@ -84,7 +106,7 @@ DecisionGraph {
 
 ## Routing
 
-1. **Argument is a sub-command** (`new`, `merge`, `view`, `status`): Load that sub-skill.
+1. **Argument is a sub-command** (`new`, `merge`, `view`, `status`): Load the corresponding guide.
 2. **Argument is a path or file list**: Treat as `new` — the user wants to analyze those files.
 3. **No argument**: Check context.
    - If there's a recent unmerged session → ask if they want to merge it
