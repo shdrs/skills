@@ -1,10 +1,9 @@
-# shdrs/skills (broken💎shaders)
+# broken💎shaders' `SKILL.md` marketplace
 
-Some agent skills I created for myself.
-Distributed to the public in an agent-agnostic format.
+I created these. Use them as you please.
 
-## Local development
+### Build all skills for all providers
 
 ```bash
-node scripts/build.mjs          # build all skills for all providers
+bun run build
 ```
