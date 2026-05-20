@@ -186,18 +186,54 @@ Report back ONLY: root_count, total_count, merges_performed.
 
 **Chunk size limit: ~40k characters** (verify with `wc -c`). This is a hard ceiling, not a guideline. The reasoning: each merge agent reads TWO chunks, so the combined input must stay ≤ ~80k characters (~20k LLM tokens). "Well within model context" is not a valid reason to exceed this — the limit protects output quality, not just context length. Overloaded agents produce shallow comparisons and miss merges.
 
-Run the shuffle applet — no sub-agent needed, this is deterministic:
+Run the shuffle applet. It reads all merge outputs, normalizes nested `sources` arrays, groups decisions into subtrees (root + descendants — never split), and packs into chunks capped at 40k characters. It reports chunk count, sizes, and source coverage as JSON to stdout.
+
+#### Choosing a strategy
+
+The applet supports three strategies. Pick based on where you are in the loop:
+
+**`interleave`** (default) — Round-robin individual subtrees across source files. Every chunk gets decisions from many sources. Best for **early rounds** when cross-file dedup is the priority.
 
 ```bash
-node {{applets_path}}/shuffle.mjs {round_N+1_chunks_dir} {N+1} {merge_output_1} {merge_output_2} ...
+node {{applets_path}}/shuffle.mjs {output_dir} {round} {merge_outputs...}
 ```
 
-The applet:
-- Reads all merge outputs and normalizes nested `sources` arrays
-- Groups decisions into subtrees (root + descendants — never split)
-- Interleaves subtrees round-robin across source files for cross-pollination
-- Packs into chunks capped at 40k characters (the full output JSON, not just decisions)
-- Reports chunk count, sizes, and source coverage as JSON to stdout
+**`cluster`** — Keep same-source subtrees together in clusters, interleave clusters across sources. Each chunk still has decisions from 2-4 sources, but same-file siblings stay together for hierarchy work. Best for **later rounds** when most cross-file duplicates are caught and the remaining work is refining relationships.
+
+```bash
+node {{applets_path}}/shuffle.mjs --strategy cluster {output_dir} {round} {merge_outputs...}
+```
+
+**`guided`** — Pack subtrees according to grouping assignments from a sub-agent. Use when you want **semantic grouping** — decisions about authentication from 3 different files landing in the same chunk. This costs one lightweight sub-agent call per shuffle but produces the highest-quality pairings.
+
+Step 1: Generate a manifest of decision labels (no full data — just labels, sources, context hints):
+```bash
+node {{applets_path}}/shuffle.mjs --manifest {round} {merge_outputs...}
+```
+
+Step 2: Dispatch a sub-agent with the manifest. The sub-agent reads labels and outputs a JSON file mapping each label to a group number:
+```
+Read the attached manifest of {N} decision labels. Group decisions that
+should be compared together — decisions about the same subsystem, related
+concerns from different files, or potential parent-child relationships
+that haven't been merged yet. Output:
+{ "assignments": { "<label>": <group_number>, ... } }
+Write to: {assignments_path}
+```
+
+Step 3: Shuffle using the assignments:
+```bash
+node {{applets_path}}/shuffle.mjs --assignments {assignments_path} {output_dir} {round} {merge_outputs...}
+```
+
+#### When to use which
+
+| Round context | Recommended strategy |
+|--------------|---------------------|
+| High reduction rate (>30%), lots of cross-file duplicates likely | `interleave` |
+| Low reduction rate (<15%), curve flattening | `cluster` |
+| Large corpus, source files cover distinct domains | `guided` |
+| Small corpus (<100 decisions remaining) | Any — difference is marginal |
 
 Override the default 40k limit with `MAX_CHARS=50000` env var if needed.
 
