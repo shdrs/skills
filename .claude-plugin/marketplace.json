@@ -18,6 +18,17 @@
       "source": "./plugins/mega-skill",
       "category": "productivity",
       "tags": ["skills", "architecture", "multi-agent", "publishing"]
+    },
+    {
+      "name": "cytospec",
+      "description": "Extracts decisions from markdown files (specs, plans, design docs) and maps them into a graph. Produces a living artifact that grows across sessions — each run adds decisions, evidence accumulates, and the graph evolves as specs evolve.",
+      "version": "1.0.0",
+      "author": {
+        "name": "shdrs"
+      },
+      "source": "./plugins/cytospec",
+      "category": "productivity",
+      "tags": ["decisions", "graphs", "specs", "analysis", "map-reduce"]
     }
   ]
 }

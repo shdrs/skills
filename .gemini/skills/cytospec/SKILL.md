@@ -1,0 +1,108 @@
+---
+name: cytospec
+description: Extracts decisions from markdown files (specs, plans, design docs) and maps them into a graph. Use this skill whenever someone wants to understand what decisions were made across their spec files, map out a decision pipeline, reduce a large corpus of markdown into browsable insights, visualize how specs relate to each other, or find hidden dependencies between design decisions. Also triggers when someone mentions decision graphs, spec analysis, decision mapping, spec consolidation, or asks things like 'what decisions did we make' or 'how do these specs connect.' Works on any .md file — one or thousands.
+---
+
+Extracts decisions from markdown files and maps how they relate — producing a graph that compresses large spec corpora into browsable, interconnected insights.
+
+## Why decisions, not topics
+
+Topics are what you wrote about. Decisions are what you committed to. A spec file about "Authentication" is a topic. "Use JWT over session cookies because of our stateless API constraint" is a decision. Decisions have rationale, alternatives, tradeoffs, and downstream impact. They connect to other decisions across files. That's what makes them graph-worthy.
+
+## The living artifact
+
+cytospec produces a persistent folder that grows across sessions:
+
+```
+docs/cytospec/                              ← root (configurable)
+  graph.json                                ← master graph, accumulated
+  scopes/
+    2026-05-20-auth-api-design/             ← one session
+      metadata.json
+      chunks/
+      tournament/
+      edges/
+      graph.json                            ← session's standalone graph
+```
+
+Each session produces its own `graph.json`. Then a merge integrates it into the master. The master is the accumulated truth — decisions grow, evidence accumulates, stale decisions get flagged (never deleted).
+
+## Data model
+
+Use this schema exactly. Field ordering matters — it matches the generation sequence (find quotes first, then synthesize).
+
+```
+Insight {
+  quotes: string[]           // verbatim evidence from source .md files
+  synthesis: string          // generated AFTER finding quotes — concise, 0 filler words
+}
+
+Decision {
+  label: Insight             // THE ID — label.synthesis is a unique single sentence
+  parent: string | null      // label.synthesis of parent decision (hierarchy)
+  depth: number              // 0=strategic, 1=tactical, 2=implementation
+  sources: string[]          // .md file paths that contributed evidence
+
+  trace: {
+    why:    Insight[]        // reasons this decision was made (empty if none found)
+    over:   Insight[]        // alternatives considered (empty if none stated)
+    impact: Insight[]        // tradeoffs and downstream effects (interpretation OK)
+  }
+  explain: string            // extends label without repeating it
+  tags: string[]             // topic tags for clustering/filtering
+
+  // Living artifact metadata (added during merge stage)
+  source_verified: {}        // file → ISO timestamp when last verified
+  first_seen: string         // when first added to master
+  last_verified: string      // when last confirmed by a session
+  stale: boolean             // flagged if source re-processed but decision missing
+}
+
+Edge {
+  type: "depends-on" | "enables" | "constrains" | "contradicts"
+  from: string               // decision label.synthesis
+  to: string                 // decision label.synthesis
+  insight: Insight           // quote-backed evidence this connection exists
+  strength: "explicit" | "inferred"
+}
+
+DecisionGraph {
+  decisions: Decision[]
+  edges: Edge[]
+}
+```
+
+## Commands
+
+| Command | What the user wants | Sub-skill |
+|---------|-------------------|-----------|
+| `/cytospec new specs/` | "Analyze these spec files" | [new](sub-skills/new.md) |
+| `/cytospec merge` | "Merge my latest session into the master" | [merge](sub-skills/merge.md) |
+| `/cytospec view` | "Show me the decision graph" | [view](sub-skills/view.md) |
+| `/cytospec status` | "What's in my graph?" | [status](sub-skills/status.md) |
+| `/cytospec` | No argument — assess what the user needs | See routing below |
+
+## Routing
+
+1. **Argument is a sub-command** (`new`, `merge`, `view`, `status`): Load that sub-skill.
+2. **Argument is a path or file list**: Treat as `new` — the user wants to analyze those files.
+3. **No argument**: Check context.
+   - If there's a recent unmerged session → ask if they want to merge it
+   - If a master graph exists → ask if they want to view it, run a new session, or check status
+   - If nothing exists → ask what files to analyze and start a new session
+
+## Delegation principles
+
+You are a **delegator** when running the pipeline. You orchestrate sub-agents but never read their data directly. Your context holds only file paths, counts, and status summaries.
+
+- **Sub-agents read each other's files.** Data flows sub-agent → file → sub-agent. Never through you.
+- **Tell sub-agents WHERE to read and write.** Every prompt includes explicit paths.
+- **Track progress by counts.** "Wave 2 produced 45 roots across 3 batches" — never the decisions themselves.
+- **Cheapest model for extraction** (Stage 1 is mechanical). **Strongest model for everything else** (judgment calls).
+- **Chunks use line ranges.** Tell extraction agents: "Read file X, lines 0-1000." They use Read with offset/limit.
+
+## What cytospec does NOT do
+
+- **Visualization.** The graph.json is data. A viewer applet (Cytoscape, D3, etc.) is a separate concern — out of scope for this skill.
+- **Code analysis.** cytospec reads markdown, not source code. For code architecture graphs, use other tools.
+- **Summarization.** cytospec extracts decisions with quote-backed evidence. It doesn't summarize content — it structures it.
