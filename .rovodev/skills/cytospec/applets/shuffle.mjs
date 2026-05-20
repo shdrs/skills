@@ -2,26 +2,16 @@
 
 // shuffle.mjs — Redistribute merge outputs into bounded, cross-pollinated chunks.
 //
-// Usage:
-//   node shuffle.mjs [options] <output-dir> <round> <file1.json> [file2.json ...]
+// Primary flow (guided by a sub-agent):
+//   1. node shuffle.mjs --manifest <round> <file1.json> ...
+//      → outputs a lightweight label manifest for a sub-agent to group
+//   2. Sub-agent reads manifest, writes assignments JSON
+//   3. node shuffle.mjs --assignments <file> <output-dir> <round> <file1.json> ...
+//      → packs subtrees according to the assignments
 //
-// Options:
-//   --strategy <name>     interleave (default), cluster, or guided
-//   --assignments <file>  JSON file mapping labels to group numbers (for guided strategy)
-//   --manifest            Instead of shuffling, output a lightweight label manifest
-//                         for a sub-agent to produce grouping assignments
-//
-// Strategies:
-//   interleave  Round-robin individual subtrees across source files.
-//               Best for early rounds — maximizes cross-file dedup exposure.
-//
-//   cluster     Keep same-source subtrees together, interleave at cluster level.
-//               Best for later rounds — preserves within-file relationships
-//               (siblings, parent-child) while still mixing across sources.
-//
-//   guided      Pack subtrees according to assignments from a sub-agent.
-//               The assignments file maps decision labels to group numbers.
-//               Subtrees sharing a group land in the same chunk when possible.
+// Fallback (no sub-agent):
+//   node shuffle.mjs <output-dir> <round> <file1.json> ...
+//      → falls back to round-robin interleaving across source files
 //
 // Env:
 //   MAX_CHARS — max characters per output chunk (default: 40000)
