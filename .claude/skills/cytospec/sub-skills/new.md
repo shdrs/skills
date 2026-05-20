@@ -403,18 +403,18 @@ The applet reads all `.json` files from both directories, concatenates decisions
 
 ## Step 7: Viewer and next steps
 
-After the session graph is written, generate the interactive viewer:
+After the session graph is written, copy the viewer to `docs/cytospec/viewer.html` if it doesn't already exist:
 
 ```bash
-node {{applets_path}}/viewer.mjs {session_scope}/graph.json
+cp {{applets_path}}/viewer.html docs/cytospec/viewer.html
 ```
 
 Then tell the user:
 
 > "Session complete — extracted {N} decisions with {M} cross-cutting edges from {K} files."
 >
-> "Open the interactive viewer to explore: `file://{viewer_html_path}`"
-> "You can drag nodes to rearrange, click any decision for details, and double-click to drill into subtrees."
+> "Open the viewer to explore: `file://{absolute_path_to}/docs/cytospec/viewer.html`"
+> "Load your session graph from `docs/cytospec/scopes/{session}/graph.json` via the file picker or drag-and-drop."
 >
 > If a master graph exists: "Want me to merge this into the master graph?"
 > If no master exists: "This is your first session — want me to create the master graph from this?"

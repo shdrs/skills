@@ -5,7 +5,6 @@ user-invocable: true
 argument-hint: "[new|merge|view|status] [path/to/specs/ or file1.md ...]"
 license: MIT
 allowed-tools:
-  - Bash(node .qoder/skills/cytospec/applets/viewer.mjs *)
   - Bash(node .qoder/skills/cytospec/applets/shuffle.mjs *)
   - Bash(node .qoder/skills/cytospec/applets/assemble.mjs *)
 ---
@@ -86,7 +85,7 @@ Never say "sub-skill" or "applet." Present all files as `cytospec/filename`, str
 | ❌ Don't say | ✅ Say instead |
 |---|---|
 | "Loading the `new` sub-skill" | "Loading `cytospec/new.md`" |
-| "Running the viewer applet" | "Running `cytospec/viewer.mjs`" or "Running the viewer" |
+| "Opening `cytospec/applets/viewer.html`" | "Opening the viewer" |
 | "Opening `cytospec/applets/dashboard/index.html`" | "Opening `cytospec/dashboard/index.html`" |
 
 Also avoid pipeline jargon — the user doesn't need to hear about "map-reduce rounds," "shuffle phases," or "pairwise merge agents." Describe what's happening in plain terms: "comparing decisions across files," "deduplicating," "looking for connections." The internals are your concern, not theirs.
@@ -134,7 +133,7 @@ You are a **delegator** when running the pipeline. You orchestrate sub-agents bu
 
 ## After producing a graph
 
-Whenever a `graph.json` is created or updated — whether from a `new` session, a `merge`, or any other operation — always offer the interactive viewer. Load the [view](sub-skills/view.md) guide to generate the viewer HTML and give the user a `file://` link they can open in their browser.
+Whenever a `graph.json` is created or updated — whether from a `new` session, a `merge`, or any other operation — always offer the interactive viewer. Copy `viewer.html` from the applets directory to `docs/cytospec/viewer.html` if it doesn't already exist, then give the user a `file://` link and tell them to load their graph.json there. Load the [view](sub-skills/view.md) guide for details.
 
 ## What cytospec does NOT do
 

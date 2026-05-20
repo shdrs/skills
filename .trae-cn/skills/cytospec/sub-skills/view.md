@@ -71,19 +71,24 @@ If any decisions are flagged `stale: true`, highlight them:
 
 ## Interactive viewer
 
-Generate a standalone HTML viewer with the graph data embedded. The viewer applet writes a self-contained file the user can open directly in their browser — no server needed.
+The viewer is a static HTML file that the user opens in their browser. Copy it from the applets directory to `docs/cytospec/viewer.html` if it doesn't already exist:
 
 ```bash
-node {{applets_path}}/viewer.mjs {graph_json_path}
+cp {{applets_path}}/viewer.html docs/cytospec/viewer.html
 ```
 
-This writes `viewer.html` next to the graph file and outputs a JSON line with the `file://` URL. Give the user that URL:
+Then give the user the `file://` link and context-appropriate instructions. For example, after a new session:
 
-> Your graph is ready to explore: `file:///path/to/docs/cytospec/viewer.html`
+> Your graph is ready to explore. Open the viewer in your browser:
+> `file://{absolute_path_to}/docs/cytospec/viewer.html`
 >
-> Open that link in your browser. You can drag nodes to rearrange the layout, click any decision to see its full trace, and double-click to drill into subtrees.
+> Click "Load graph.json" or drag your file onto the page to load it. The session graph is at `docs/cytospec/scopes/{session}/graph.json`.
 
-If no graph path is provided, the viewer is written without injected data — the user can load any graph.json via the file picker or drag-and-drop.
+Or after a merge:
+
+> The master graph has been updated. Open the viewer and load `docs/cytospec/graph.json` to see the full picture.
+
+The viewer supports drag-and-drop — the user can drop any `graph.json` onto the page to load it.
 
 ### What the viewer provides
 
