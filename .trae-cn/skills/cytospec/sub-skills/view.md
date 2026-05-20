@@ -71,15 +71,19 @@ If any decisions are flagged `stale: true`, highlight them:
 
 ## Interactive viewer
 
-Launch the Cytoscape viewer to explore the graph visually. The viewer applet lives in the `applets/` directory alongside this skill — use the same base path you were loaded from, replacing `sub-skills/view.md` with `applets/viewer.mjs`:
+Generate a standalone HTML viewer with the graph data embedded. The viewer applet writes a self-contained file the user can open directly in their browser — no server needed.
 
 ```bash
-node <skill-base>/applets/viewer.mjs docs/cytospec/graph.json
+node {{applets_path}}/viewer.mjs {graph_json_path}
 ```
 
-This starts a local server and outputs a JSON line with the URL. Open that URL for the user (or tell them to open it). The viewer loads the graph immediately — no file picker needed.
+This writes `viewer.html` next to the graph file and outputs a JSON line with the `file://` URL. Give the user that URL:
 
-If no graph path is provided, the viewer opens empty and the user can load a file via the file picker or drag-and-drop.
+> Your graph is ready to explore: `file:///path/to/docs/cytospec/viewer.html`
+>
+> Open that link in your browser. You can drag nodes to rearrange the layout, click any decision to see its full trace, and double-click to drill into subtrees.
+
+If no graph path is provided, the viewer is written without injected data — the user can load any graph.json via the file picker or drag-and-drop.
 
 ### What the viewer provides
 
@@ -88,7 +92,7 @@ If no graph path is provided, the viewer opens empty and the user can load a fil
 - **Coupling mode** — only shows decisions that have cross-cutting edges. Hides everything else. Answers "where are the hidden dependencies?"
 - **Focus mode** — click or double-click any decision to see its subtree plus all edges touching any node in that subtree. Breadcrumb navigation to walk back up.
 
-Nodes are sized and colored by depth (strategic → tactical → implementation). Edges are colored by type (depends-on, enables, constrains, contradicts) and dashed when inferred. Stale decisions get an amber dashed border.
+Nodes are auto-sized to fit their full label text and colored by depth (strategic, tactical, implementation). The layout is animated and interactive — drag any node and the graph adjusts around it. Edges are colored by type (depends-on, enables, constrains, contradicts) and dashed when inferred. Stale decisions get an amber dashed border.
 
 Clicking a node opens a detail panel with the full decision: explain, trace (why/over/impact with quotes), connections, sub-decisions, sources, and tags. Clicking a cross-cutting edge shows its evidence.
 

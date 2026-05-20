@@ -125,8 +125,11 @@ You are a **delegator** when running the pipeline. You orchestrate sub-agents bu
 - **Cheapest model for extraction** (Stage 1 is mechanical). **Strongest model for everything else** (judgment calls).
 - **Chunks use line ranges.** Tell extraction agents: "Read file X, lines 0-1000." They use the Read tool with offset/limit. You do NOT copy file content into sub-agent prompts.
 
+## After producing a graph
+
+Whenever a `graph.json` is created or updated — whether from a `new` session, a `merge`, or any other operation — always offer the interactive viewer. Load the [view](sub-skills/view.md) guide to generate the viewer HTML and give the user a `file://` link they can open in their browser.
+
 ## What cytospec does NOT do
 
-- **Visualization.** The graph.json is data. A viewer applet (Cytoscape, D3, etc.) is a separate concern — out of scope for this skill.
 - **Code analysis.** cytospec reads markdown, not source code. For code architecture graphs, use other tools.
 - **Summarization.** cytospec extracts decisions with quote-backed evidence. It doesn't summarize content — it structures it.

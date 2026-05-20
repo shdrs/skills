@@ -401,11 +401,20 @@ The applet reads all `.json` files from both directories, concatenates decisions
 }
 ```
 
-## Step 7: Offer to merge
+## Step 7: Viewer and next steps
 
-After the session graph is written, tell the user:
+After the session graph is written, generate the interactive viewer:
 
-> "Session complete — extracted {N} decisions with {M} cross-cutting edges from {K} files. The session graph is at `docs/cytospec/scopes/{session}/graph.json`."
+```bash
+node {{applets_path}}/viewer.mjs {session_scope}/graph.json
+```
+
+Then tell the user:
+
+> "Session complete — extracted {N} decisions with {M} cross-cutting edges from {K} files."
+>
+> "Open the interactive viewer to explore: `file://{viewer_html_path}`"
+> "You can drag nodes to rearrange, click any decision for details, and double-click to drill into subtrees."
 >
 > If a master graph exists: "Want me to merge this into the master graph?"
 > If no master exists: "This is your first session — want me to create the master graph from this?"
