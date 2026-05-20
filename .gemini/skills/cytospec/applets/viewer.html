@@ -27,7 +27,7 @@ button:hover,select:hover{border-color:var(--accent-dim);background:var(--surfac
 button:active{transform:scale(.97)}
 select{padding-right:24px;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center}
 .stats{margin-left:auto;font-size:12px;color:var(--muted);white-space:nowrap}
-#tags{display:flex;gap:4px;flex-wrap:wrap}
+#tags{display:flex;gap:4px;flex-wrap:nowrap;overflow-x:auto}
 .tag-btn{font-size:11px;padding:3px 8px;border-radius:12px;background:var(--surface2);border:1px solid var(--border);color:var(--muted);cursor:pointer;transition:all .15s;white-space:nowrap}
 .tag-btn:hover{border-color:var(--accent-dim)}
 .tag-btn.on{background:var(--accent-dim);border-color:var(--accent);color:var(--bright)}
@@ -123,7 +123,7 @@ main{display:flex;height:calc(100vh - var(--hdr))}
 'use strict';
 
 /* -- state -- */
-let graph = null, cy = null, activeLayout = null, mode = 'overview', focusId = null;
+let graph = null, cy = null, activeLayout = null, layoutOpts = null, mode = 'overview', focusId = null;
 const activeTags = new Set();
 const s2id = new Map(), id2s = new Map();
 let nextNid = 0;
@@ -311,7 +311,7 @@ function render(){
     wheelSensitivity:.3,minZoom:.1,maxZoom:3
   });
 
-  activeLayout = cy.layout({
+  layoutOpts = {
     name: 'cola',
     animate: true,
     refresh: 1,
@@ -323,7 +323,8 @@ function render(){
     edgeLength: function(edge){ return edge.hasClass('hier') ? 120 : 250; },
     flow: hasHier ? { axis: 'y', minSeparation: 50 } : undefined,
     randomize: true
-  });
+  };
+  activeLayout = cy.layout(layoutOpts);
   activeLayout.run();
 
   /* events */
@@ -336,6 +337,12 @@ function render(){
   cy.on('dblclick','node',function(e){
     const synth=e.target.data('synth');
     if(children(synth).length>0){ focusId=synth; setMode('focus'); }
+  });
+  /* re-run cola on drag so graph stays alive after initial settle */
+  cy.on('grab','node',function(){
+    if(activeLayout){ activeLayout.stop(); activeLayout=null; }
+    activeLayout = cy.layout(Object.assign({}, layoutOpts, { randomize: false, fit: false, maxSimulationTime: 12000 }));
+    activeLayout.run();
   });
 
   updateStats(); updateBreadcrumb();
