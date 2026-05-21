@@ -73,6 +73,18 @@ for (const file of inputFiles) {
   const decisions = data.decisions || [];
   for (const d of decisions) {
     d.sources = flattenSources(d);
+    // Warn on format drift — merge agents should never produce these
+    if (d.id) console.error(`WARN: decision has "id" field (${d.id}) in ${basename(file)} — raw_label is the identity, not a separate id`);
+    if (d.children && d.children.length) {
+      console.error(`WARN: decision has nested "children" in ${basename(file)} — children must be separate entries with parent references`);
+      // Flatten nested children into the decisions array
+      for (const child of d.children) {
+        child.sources = flattenSources(child);
+        if (!child.parent) child.parent = getLabel(d);
+        decisions.push(child);
+      }
+      delete d.children;
+    }
   }
   allDecisions.push(...decisions);
   inputSummary.push({ file: basename(file), decisions: decisions.length });

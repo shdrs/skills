@@ -98,6 +98,30 @@ The format:
 Report back ONLY: how many candidates you found and the source file + line range.
 ```
 
+## Decision format (used from extraction through polish)
+
+Every decision throughout the pipeline uses this shape:
+
+```json
+{
+  "raw_label": "single-sentence label — THIS is the decision's identity",
+  "quotes": ["verbatim text from source files"],
+  "context_hint": "topic area",
+  "sources": ["file1.md", "file2.md"],
+  "source_lines": [[10, 50], [200, 250]],
+  "parent": "raw_label of parent decision" | null,
+  "depth": 0
+}
+```
+
+Three non-negotiable rules:
+
+1. **`raw_label` IS the identity.** No `id` field. Ever. When the merge prompt below says "decision label," it means `raw_label`.
+2. **`parent` references another decision's `raw_label`.** Not an invented identifier, not an index, not a hash. The literal `raw_label` string of the parent decision.
+3. **Flat array with parent references. Never nest children inside parents.** A decision with 3 children produces 4 entries in the `decisions` array — the parent with `"parent": null` and three children each with `"parent": "the parent's raw_label"`.
+
+When a merge changes a decision's `raw_label` (e.g., picking the more concise label after combining two), update every child's `parent` reference to match the new `raw_label`.
+
 ## Step 3: Consolidation (map-reduce loop)
 
 This is the core of cytospec. It takes the raw candidates from extraction and consolidates them into a deduplicated decision tree through iterative map-reduce rounds.
@@ -162,15 +186,34 @@ For every plausible pair of root-level decisions (one from each file),
 run VennAnalysis and apply the verdict. Be aggressive about merging —
 decisions about the same system/component using different words should MERGE.
 
-For PARENT_CHILD verdicts: the broader decision becomes parent, the narrower
-becomes its child.
+Applying verdicts:
+- MERGE: combine quotes and sources, pick the more concise raw_label.
+  If the surviving label differs from either original, update any child
+  decisions whose "parent" referenced the old label.
+- PARENT_CHILD: set child.parent = parent.raw_label. Both survive as
+  separate entries in the flat decisions array.
+- SIBLING / UNRELATED: pass through unchanged.
+
+CRITICAL FORMAT RULES — these prevent downstream breakage:
+- Each decision is: { "raw_label", "quotes", "context_hint", "sources",
+  "source_lines", "parent", "depth" }
+- raw_label IS the identity. Do NOT add an "id" field.
+- parent is the raw_label of the parent decision, or null. Never an
+  invented identifier.
+- Output a FLAT decisions array. Never nest children inside parents.
+  A parent with 2 children = 3 entries in the array.
 
 Write output to: {output_path}
 Format:
 {
   "round": {N},
   "input_files": ["{chunk_a_path}", "{chunk_b_path}"],
-  "decisions": [ ...consolidated decisions... ],
+  "decisions": [
+    { "raw_label": "...", "quotes": [...], "context_hint": "...",
+      "sources": [...], "source_lines": [...], "parent": null, "depth": 0 },
+    { "raw_label": "...", "quotes": [...], "context_hint": "...",
+      "sources": [...], "source_lines": [...], "parent": "raw_label of parent", "depth": 1 }
+  ],
   "root_count": {N},
   "total_count": {N},
   "merges_performed": {N},
@@ -285,30 +328,51 @@ Before dispatching, check every merge output with `wc -c`. Polish agents expand 
 ```
 Read the consolidated decisions at: {merge_output_path}
 
-For each decision, convert to the final schema:
+Convert each decision from the intermediate format to the final schema.
 
-1. Convert raw_label into a proper label Insight:
-   { "quotes": [use existing quotes array], "synthesis": "the raw_label text" }
+For each decision, produce this exact shape:
 
-2. Fill trace fields from the accumulated quotes:
-   - why:    reasons this decision was made (Insight objects). Empty array if no evidence.
-   - over:   alternatives considered (Insight objects). Empty array if none stated.
-   - impact: tradeoffs and downstream effects (Insight objects). Empty array if none found.
+{
+  "label": {
+    "quotes": [the existing quotes array from the intermediate format],
+    "synthesis": "the raw_label text, unchanged"
+  },
+  "parent": "label.synthesis of parent decision" or null,
+  "depth": 0 | 1 | 2,
+  "sources": ["file1.md", "file2.md"],
+  "trace": {
+    "why":    [Insight objects — reasons this decision was made],
+    "over":   [Insight objects — alternatives considered],
+    "impact": [Insight objects — tradeoffs and downstream effects]
+  },
+  "explain": "one sentence extending the label without repeating it",
+  "tags": ["architecture", "data-model", ...]
+}
 
-3. Generate an explain string — extends the label, doesn't repeat it. One sentence.
+Where each Insight is: { "quotes": ["verbatim text"], "synthesis": "concise summary" }
 
-4. Assign tags — look for natural clusters across ALL decisions in this file,
-   not ad-hoc per-decision. Common categories: architecture, data-model,
-   api-design, security, performance, ui, infrastructure, etc.
+Conversion rules:
 
-5. Set depth: 0 for strategic (broad architectural), 1 for tactical
-   (component-level), 2 for implementation details.
+1. label.synthesis = the raw_label from the input, verbatim. This string
+   IS the decision's identity — it must match exactly across parent
+   references and edge references. Do not rephrase it.
 
-6. Keep parent, sources, source_file, source_lines, context_hint as-is.
+2. parent = the raw_label of the parent decision (which is now that
+   parent's label.synthesis). Copy it unchanged. If null, keep null.
 
-Insight generation rule: quotes first, then synthesis. Find relevant quotes,
-then write the synthesis grounded in those quotes. No quotes → empty array,
-not a hallucinated synthesis.
+3. trace: fill why/over/impact from the accumulated quotes. Find relevant
+   quotes first, then write synthesis grounded in them. No quotes → empty
+   array, not a hallucinated synthesis.
+
+4. depth: 0 = strategic (broad architectural), 1 = tactical (component),
+   2 = implementation detail. Infer from scope.
+
+5. tags: look for natural clusters across ALL decisions in this file,
+   not ad-hoc per-decision. Common: architecture, data-model, api-design,
+   security, performance, ui, infrastructure, etc.
+
+6. Drop intermediate-only fields: context_hint, source_lines, source_file.
+   Do NOT add any fields not listed above (no "id", no "children").
 
 Write to: {polish_output_path}
 Format: { "decisions": [...], "decision_count": N }
@@ -365,8 +429,8 @@ Format:
   "edges": [
     {
       "type": "constrains",
-      "from": "decision label",
-      "to": "decision label",
+      "from": "label.synthesis of source decision (exact string match)",
+      "to": "label.synthesis of target decision (exact string match)",
       "insight": { "quotes": ["..."], "synthesis": "..." },
       "strength": "explicit"
     }
