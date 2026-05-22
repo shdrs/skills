@@ -380,6 +380,15 @@ function showNode(synth){
   h+='<span class="badge badge-d'+d.depth+'">'+(DEPTH_LABEL[d.depth]||'Depth '+d.depth)+'</span>';
   if(d.stale) h+='<span class="badge badge-stale">Stale</span>';
   h+='</div>';
+  if(d.parent){
+    var pd=dm.get(d.parent);
+    var pdepth=pd?pd.depth:0;
+    h+='<div class="d-section"><h3>Parent</h3>';
+    h+='<div class="conn" data-synth="'+esc(d.parent)+'">';
+    h+='<div class="conn-head"><span class="badge badge-d'+pdepth+'">'+(DEPTH_LABEL[pdepth]||'')+'</span></div>';
+    h+='<div class="conn-label">'+esc(trunc(d.parent,80))+'</div>';
+    h+='</div></div>';
+  }
   if(d.explain) h+='<p class="synth">'+esc(d.explain)+'</p>';
 
   h+=traceSection('Why',d.trace?.why);
